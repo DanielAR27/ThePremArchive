@@ -1,0 +1,11 @@
+Proyecto1 - *
+
+# Repositorio de documentos y estado del arañado (no versionar: >10GB)
+repo/
+data/
+logs/
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
