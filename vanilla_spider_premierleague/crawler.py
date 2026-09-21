@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit
 
 from common import dedup, extract, urls
-from common.bitacora import Bitacora, human_bytes
+from common.bitacora import Bitacora, hms, human_bytes
 from common.config import Config
 from common.store import DONE, FAILED, SKIPPED, DuplicateError, Store
 
@@ -203,7 +203,7 @@ class Crawler:
             rate = (docs - last_docs) / max(now - last_time, 1e-6)
             last_docs, last_time = docs, now
 
-            print(f"[{_hms(now - started)}] docs={docs:,} texto={human_bytes(total_bytes)} "
+            print(f"[{hms(now - started)}] docs={docs:,} texto={human_bytes(total_bytes)} "
                   f"({rate:.1f} doc/s) cola={self.store.pending_count():,}", flush=True)
 
             if total_bytes >= self.cfg.target_bytes:
@@ -217,8 +217,3 @@ class Crawler:
         print("\nDistribucion por sitio (politica de cortesia):")
         for host, count, size in self.store.per_host_counts():
             print(f"  {host:<34} {count:>8,} docs  {size / 1024**2:>9.1f} MB")
-
-
-def _hms(seconds: float) -> str:
-    seconds = int(seconds)
-    return f"{seconds // 3600:02d}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"

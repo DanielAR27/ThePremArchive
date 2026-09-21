@@ -39,3 +39,8 @@ def human_bytes(size: float) -> str:
     if size < 1024**3:
         return f"{size / 1024**2:.1f}MB"
     return f"{size / 1024**3:.2f}GB"
+
+
+def hms(seconds: float) -> str:
+    seconds = int(seconds)
+    return f"{seconds // 3600:02d}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"

@@ -49,6 +49,13 @@ ITEM_PIPELINES = {
     "premierleague.pipelines.StoragePipeline": 300,
 }
 
+# Se detiene solo cuando el repositorio combinado (propio + Scrapy) llega a
+# esta meta; override en la linea de comandos con -s TARGET_GB=<numero>.
+EXTENSIONS = {
+    "premierleague.extensions.TargetSizeExtension": 500,
+}
+TARGET_GB = 10
+
 LOG_LEVEL = "INFO"
 LOG_FILE = str(Path(__file__).resolve().parents[2] / "logs" / "scrapy.log")
 
