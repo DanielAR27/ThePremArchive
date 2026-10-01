@@ -101,3 +101,49 @@ Estas URLs son únicamente el punto de partida: el arañador extrae los enlaces 
 **Metadatos a almacenar:** hash del contenido (para comparación rápida), URL(s) duplicadas detectadas.
 
 ---
+
+## Estadísticas del repositorio
+
+El repositorio final combina lo descargado por ambos arañadores (propio y Scrapy), ejecutados en paralelo sobre las mismas 22 semillas durante aproximadamente 180 horas.
+
+| Métrica | Valor |
+|---|---|
+| Tamaño total del repositorio (texto limpio) | 15.12 GB |
+| Cantidad de documentos | 1,440,556 |
+| Cantidad de palabras (ocurrencias totales) | 2,693,195,808 |
+| Palabras distintas | 996,383 |
+| Documentos con fecha de publicación extraída | 1,132,599 (78.6%) |
+
+### Distribución por sitio (top 15)
+
+| Sitio | Documentos | Tamaño |
+|---|---|---|
+| dailymail.com | 183,348 | 9,615.6 MB |
+| goal.com | 154,925 | 346.8 MB |
+| mirror.co.uk | 139,100 | 668.3 MB |
+| liverpoolecho.co.uk | 113,517 | 589.2 MB |
+| manchestereveningnews.co.uk | 110,001 | 565.4 MB |
+| bbc.com | 103,744 | 916.0 MB |
+| birminghammail.co.uk | 88,337 | 424.4 MB |
+| transfermarkt.com | 74,398 | 211.7 MB |
+| chroniclelive.co.uk | 74,306 | 381.2 MB |
+| standard.co.uk | 71,975 | 262.8 MB |
+| espn.com | 68,670 | 183.9 MB |
+| caughtoffside.com | 55,081 | 135.0 MB |
+| teamtalk.com | 43,388 | 189.6 MB |
+| independent.co.uk | 41,287 | 227.9 MB |
+| theguardian.com | 33,751 | 234.1 MB |
+
+`dailymail.com` concentra más de la mitad del tamaño total del repositorio con solo el 12.7% de los documentos (~52KB promedio por documento, frente a ~11KB del resto); su plantilla de artículo incluye bastante texto adicional (resúmenes, listas relacionadas) que el extractor conserva por no estar marcado como navegación.
+
+### Curva de frecuencia de palabras
+
+![Curva de frecuencia de palabras](estadisticas/curva_frecuencia_palabras.png)
+
+La primera gráfica ordena las 996,383 palabras distintas de más a menos frecuente (eje X) contra cuántas veces aparece cada una en todo el repositorio (eje Y), ambos en escala logarítmica. La línea casi recta que se forma es exactamente lo que predice la **ley de Zipf**: en cualquier texto en lenguaje natural, unas pocas palabras (artículos, preposiciones) concentran la mayoría de las apariciones, mientras que la inmensa mayoría de las palabras distintas aparece muy pocas veces (la cola larga de la derecha). Que la curva del repositorio siga este patrón es una buena señal de que el texto extraído es lenguaje natural real y no basura de HTML, menús o código mal limpiado.
+
+![20 palabras más frecuentes](estadisticas/top_palabras.png)
+
+La segunda gráfica muestra las 20 palabras más repetidas. Todas son *stopwords* del inglés (the, to, and, a, in...), y eso es el resultado esperado, no un error: **a propósito no se filtraron stopwords para esta estadística**, porque la ley de Zipf se demuestra justamente con ellas, son las que arman la curva de la primera gráfica. Quitarlas tendría sentido si esta cifra fuera insumo para un índice de búsqueda o para comparar temas entre documentos, pero no para medir la frecuencia de palabras de la colección completa como pide esta sección.
+
+---

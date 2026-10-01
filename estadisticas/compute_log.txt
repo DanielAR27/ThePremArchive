@@ -1,0 +1,33 @@
+Procesando 1,440,556 documentos...
+  50,000/1,440,556 docs (3288 docs/s, ETA 7.0 min)
+  100,000/1,440,556 docs (3463 docs/s, ETA 6.5 min)
+  150,000/1,440,556 docs (3509 docs/s, ETA 6.1 min)
+  200,000/1,440,556 docs (3032 docs/s, ETA 6.8 min)
+  250,000/1,440,556 docs (2878 docs/s, ETA 6.9 min)
+  300,000/1,440,556 docs (2835 docs/s, ETA 6.7 min)
+  350,000/1,440,556 docs (2772 docs/s, ETA 6.6 min)
+  400,000/1,440,556 docs (2801 docs/s, ETA 6.2 min)
+  450,000/1,440,556 docs (2816 docs/s, ETA 5.9 min)
+  500,000/1,440,556 docs (2789 docs/s, ETA 5.6 min)
+  550,000/1,440,556 docs (2781 docs/s, ETA 5.3 min)
+  600,000/1,440,556 docs (2718 docs/s, ETA 5.2 min)
+  650,000/1,440,556 docs (2657 docs/s, ETA 5.0 min)
+  700,000/1,440,556 docs (2619 docs/s, ETA 4.7 min)
+  750,000/1,440,556 docs (2595 docs/s, ETA 4.4 min)
+  800,000/1,440,556 docs (2518 docs/s, ETA 4.2 min)
+  850,000/1,440,556 docs (2492 docs/s, ETA 3.9 min)
+  900,000/1,440,556 docs (2463 docs/s, ETA 3.7 min)
+  950,000/1,440,556 docs (2433 docs/s, ETA 3.4 min)
+  1,000,000/1,440,556 docs (2382 docs/s, ETA 3.1 min)
+  1,050,000/1,440,556 docs (2358 docs/s, ETA 2.8 min)
+  1,100,000/1,440,556 docs (2290 docs/s, ETA 2.5 min)
+  1,150,000/1,440,556 docs (2274 docs/s, ETA 2.1 min)
+  1,200,000/1,440,556 docs (2259 docs/s, ETA 1.8 min)
+  1,250,000/1,440,556 docs (2237 docs/s, ETA 1.4 min)
+  1,300,000/1,440,556 docs (2222 docs/s, ETA 1.1 min)
+  1,350,000/1,440,556 docs (2210 docs/s, ETA 0.7 min)
+  1,400,000/1,440,556 docs (2236 docs/s, ETA 0.3 min)
+
+Listo en 10.6 min.
+Palabras totales: 2,693,195,808
+Palabras distintas: 996,383
