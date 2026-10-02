@@ -165,7 +165,7 @@ Las políticas siguen la siguiente base: selección de páginas (qué descargar 
 
 **Descripción.** (1) Se consulta y respeta `robots.txt` de cada origen antes de descargar cualquier página (`urllib.robotparser`); (2) se aplica un retraso mínimo entre solicitudes al mismo host: el mayor entre el configurado (1.5 s por defecto) y el `Crawl-delay` declarado en `robots.txt`; (3) se limita el número de descargas simultáneas por host (2 por defecto); (4) la frontera entrega tareas balanceadas entre hosts, de modo que ningún sitio domina la cola; (5) se usa un User-Agent identificable con contacto (`ThePremArchive/1.0 (+crawler academico IC8060 TEC; contacto: ...)`); (6) se reintenta como máximo 2 veces con retroceso exponencial ante 429/5xx, respetando `Retry-After`.
 
-**Justificación.** Evita sobrecargar servidores de terceros y respeta sus términos de uso. Es una práctica estándar y documentada: el Protocolo de Exclusión de Robots está estandarizado en el RFC 9309 (Koster et al., 2022), y Olston y Najork (2010, §2.3) y Manning et al. (2008, §20.2) señalan la cortesía (retrasos por host y robots.txt) como requisito de todo crawler. La necesidad de repartir carga entre muchos sitios también está alineada con el requisito del curso de no bajar todo de un solo sitio. **Esta política es la principal responsable de que el arañado durara cerca de 168 horas** (ver sección 4.3).
+**Justificación.** Evita sobrecargar servidores de terceros y respeta sus términos de uso. Es una práctica estándar y documentada: el Protocolo de Exclusión de Robots está estandarizado en el RFC 9309 (Koster et al., 2022), y Olston y Najork (2010, §2.3) y Manning et al. (2008, §20.2) señalan la cortesía (retrasos por host y robots.txt) como requisito de todo crawler. La necesidad de repartir carga entre muchos sitios también está alineada con el requisito del curso de no bajar todo de un solo sitio. **Esta política es la principal responsable de que el arañado durara cerca de 180 horas** (ver sección 4.3).
 
 **Implementación.** `vanilla_spider_premierleague/net.py` (`_robots_for`, `allowed`, `crawl_delay`, `Retry`), `vanilla_spider_premierleague/frontier.py` (`_pick` aplica `ready_at` por host y `per_domain_concurrency`), `Store.claim` (lote balanceado por host). En Scrapy: `ROBOTSTXT_OBEY = True`, `DOWNLOAD_DELAY`, `CONCURRENT_REQUESTS_PER_DOMAIN`, `RETRY_TIMES` y `RETRY_HTTP_CODES` en `settings.py`, tomando los mismos valores de `common/config.py`.
 
@@ -222,13 +222,19 @@ Configuración relevante (`settings.py`): `CONCURRENT_REQUESTS = 48`, `CONCURREN
 cd scrapy_premierleague && scrapy crawl premierleague
 ```
 
-**¿Funcionó Scrapy?** Sí. Según la bitácora (`logs/bitacora_scrapy.jsonl`), el arañador con Scrapy estuvo registrando actividad durante ≈ 166 horas, procesó 2,198,197 páginas y **almacenó 654,355 documentos (5.83 GB)**, es decir, el 45.4% de los documentos y el 38.6% del tamaño del repositorio final. Solo registró 3 respuestas que no eran texto (`content_type`), además, no se registraron errores en la bitácora; los errores del spider quedarían en scrapy.log
+**¿Funcionó Scrapy?** Sí. Según la bitácora (`logs/bitacora_scrapy.jsonl`), el arañador con Scrapy estuvo registrando actividad durante ≈ 178 horas, procesó 2,198,197 páginas y **almacenó 654,355 documentos (5.83 GB)**, es decir, el 45.4% de los documentos y el 38.6% del tamaño del repositorio final. Solo registró 3 respuestas que no eran texto (`content_type`), además, no se registraron errores en la bitácora; los errores del spider quedarían en scrapy.log
 
 **Limitación de la evidencia.** La bitácora de Scrapy solo registra las páginas que llegaron al método `parse` (almacenadas, fuera de tema, duplicadas o de tipo no textual). Los robots.txt denegados, los errores HTTP (403, 404, etc.) y los reintentos los gestiona internamente Scrapy y no pasan por la bitácora; por eso esos contadores aparecen en 0 en la tabla 4.3 y no deben leerse como "cero fallos". Tampoco se registra el tiempo de descarga por página (`ms`).
 
 ### 4.3 Resultados de la ejecución
 
-**Corrida y duración.** Ambos arañadores se ejecutaron **en paralelo sobre las mismas 22 semillas durante ≈ 168 horas (cerca de 7 días)**, escribiendo al mismo repositorio (`repo/`) y a la misma base SQLite (`data/crawl.db`), con deduplicación compartida. El resultado combinado fue un repositorio de **15.12 GB de texto limpio en 1,440,556 documentos**, 51% por encima del mínimo de 10 GB exigido.
+**Entorno de ejecución.** El proceso de recolección se llevó a cabo en un equipo con las siguientes características técnicas, las cuales proporcionan contexto para el rendimiento alcanzado durante la ejecución:
+- **Sistema Operativo:** Windows 10
+- **Procesador (CPU):** AMD Ryzen 7 4800H (con gráficos Radeon)
+- **Memoria RAM:** 32 GB DDR4
+- **Conexión a Internet:** Fibra óptica simétrica (500 Mbps de descarga / 500 Mbps de subida)
+
+**Corrida y duración.** Ambos arañadores se ejecutaron **en paralelo sobre las mismas 22 semillas durante ≈ 180 horas (cerca de 7.5 días)**, escribiendo al mismo repositorio (`repo/`) y a la misma base SQLite (`data/crawl.db`), con deduplicación compartida. El resultado combinado fue un repositorio de **15.12 GB de texto limpio en 1,440,556 documentos**, 51% por encima del mínimo de 10 GB exigido.
 
 **Resultados medidos por arañador** (calculados con `analizar_bitacoras.py` sobre las bitácoras reales):
 
@@ -240,10 +246,10 @@ cd scrapy_premierleague && scrapy crawl premierleague
 | **Texto almacenado** | **9.29 GB** (61.4%) | **5.83 GB** (38.6%) | 15.12 GB |
 | Palabras almacenadas | 1,661,125,681 | 1,032,024,310 | 2,693,149,991 |
 | Tamaño medio por documento² | ≈ 12.4 KB | ≈ 9.3 KB | ≈ 11 KB |
-| Duración (primer a último registro) | 167.9 h | 166.3 h | ≈ 168 h |
-| Tiempo con actividad (ventanas de 10 min) | 163.5 h | 158.8 h | – |
-| Velocidad de almacenamiento (docs/s, sobre tiempo activo) | 1.34 | 1.14 | ≈ 2.5 |
-| Velocidad de análisis² (páginas/s al extractor, sobre tiempo activo) | 3.33 | 3.85 | ≈ 7.2 |
+| Duración (primer a último registro) | 179.9 h | 178.3 h | ≈ 180 h |
+| Tiempo con actividad (ventanas de 10 min) | 175.5 h | 170.8 h | – |
+| Velocidad de almacenamiento (docs/s, sobre tiempo activo) | 1.24 | 1.06 | ≈ 2.2 |
+| Velocidad de análisis² (páginas/s al extractor, sobre tiempo activo) | 3.10 | 3.57 | ≈ 6.6 |
 | Tiempo medio de descarga | 1,148 ms | no registrado | – |
 
 
@@ -264,7 +270,7 @@ cd scrapy_premierleague && scrapy crawl premierleague
 
 **Hallazgos de la ejecución.**
 
-1. **Iniciar la descarga con anticipación fue una ventaja decisiva.** Dejar los arañadores corriendo desde temprano permitió descargar mucho más contenido y que el tiempo alcanzara. Las bitácoras muestran que el arañado mantuvo actividad durante ≈ 160 h de las ≈ 168 h; una corrida tardía habría obligado a recortar profundidad, volumen o cortesía.
+1. **Iniciar la descarga con anticipación fue una ventaja decisiva.** Dejar los arañadores corriendo desde temprano permitió descargar mucho más contenido y que el tiempo alcanzara. Las bitácoras muestran que el arañado mantuvo actividad durante ≈ 172 h de las ≈ 180 h; una corrida tardía habría obligado a recortar profundidad, volumen o cortesía.
 2. **La duración se explica por las políticas, no por un defecto del motor.** La cortesía (robots.txt, retraso de 1–1.5 s por host, máximo de 2–3 descargas simultáneas por sitio, reintentos con retroceso) acota la velocidad por sitio. Además, solo el **34.6%** de las páginas analizadas termina en el repositorio: el resto se descarta por relevancia (28.4%) y por duplicación (37.0%). Llegar a 15 GB de texto *útil* exigió analizar ≈ 4.16 millones de páginas.
 3. **La deduplicación fue la política que más descartó** (1,537,024 páginas: 1,405,453 casi-duplicados y 131,571 duplicados exactos). Un mismo contenido aparece en muchas URLs y secciones de un mismo sitio, y además ambos arañadores recorrían los mismos sitios, de modo que el segundo en llegar a una noticia la descartaba. Esto explica por qué Scrapy tiene una tasa de duplicados mayor (36.6% casi-duplicados y 4.2% exactos, frente a 30.7% y 2.1% del propio): *hipótesis*, no medida directamente.
 4. **Cada arañador priorizó sitios distintos.** Aunque partieron de las mismas semillas, el propio almacenó el doble de `dailymail.com` (122,550 frente a 60,796) y es el único que tiene a `caughtoffside.com` entre sus 10 primeros sitios (49,941), mientras Scrapy aportó más de `chroniclelive.co.uk` (49,395) y tiene a `espn.com` entre sus 10 primeros (36,658). La planificación por host del propio (cola por host, elige el host listo con mayor prioridad) y el planificador global de Scrapy reparten el esfuerzo de forma diferente; la causa exacta del reparto no se midió.
@@ -274,11 +280,11 @@ cd scrapy_premierleague && scrapy crawl premierleague
 
 | Resumen del repositorio final | Valor |
 |---|---|
-| Duración | ≈ 168 h (bitácoras) |
+| Duración | ≈ 180 h (bitácoras) |
 | Semillas | 22 |
 | Documentos almacenados | 1,440,556 |
 | Texto almacenado | 15.12 GB |
-| Velocidad combinada de almacenamiento | ≈ 2.5 docs/s (1,440,512 / 168 h) |
+| Velocidad combinada de almacenamiento | ≈ 2.2 docs/s (1,440,512 / 180 h) |
 
 ---
 
@@ -328,14 +334,14 @@ Dado que la lógica de selección, extracción, deduplicación y almacenamiento 
 | 1. Expansión por profundidad | Descubre miles de páginas desde pocas semillas; controla el alcance. | Parte del contenido queda más allá de la profundidad máxima; los hubs de profundidad ≤ 1 se expanden aunque su texto sea pobre. | 22 semillas llevaron a 4.16 millones de páginas analizadas y 1.44 millones de documentos. |
 | 2. Recencia (por URL) | Barata (no requiere descargar); favorece noticias y resultados actuales. | Es una estimación; URLs sin año ni sección de noticias reciben puntajes poco informativos. | El 78.6% de los documentos tiene fecha de publicación extraída. |
 | 3. Relevancia (palabras clave) | Simple y rápida; excluye otros deportes y subdominios de servicio. | Un umbral fijo de 3 términos puede dejar pasar páginas de otros deportes que mencionan un club, o descartar páginas relevantes con poco texto; el vocabulario está en inglés. | Descartó 1,180,038 páginas (28.4% de las analizadas). |
-| 4. Cortesía | Respeta a los sitios; reduce bloqueos. | Reduce la velocidad: con 1–1.5 s por host se limita el rendimiento por sitio y exige muchos sitios y mucho tiempo (≈ 168 h) para alcanzar el volumen. | 39,161 URLs denegadas por `robots.txt` y 68,393 respuestas 403 en el propio; ≈ 7 días de corrida. |
+| 4. Cortesía | Respeta a los sitios; reduce bloqueos. | Reduce la velocidad: con 1–1.5 s por host se limita el rendimiento por sitio y exige muchos sitios y mucho tiempo (≈ 180 h) para alcanzar el volumen. | 39,161 URLs denegadas por `robots.txt` y 68,393 respuestas 403 en el propio; ≈ 7.5 días de corrida. |
 | 5. Deduplicación | Evita repetir texto; SimHash detecta variaciones menores; funciona entre ambos arañadores. | Costo extra por documento (SimHash + consulta a la BD); riesgo de falsos positivos con plantillas muy similares (p. ej. páginas de resultados). | Fue la que más descartó: 1,537,024 páginas (37.0%), más que el filtro de relevancia. |
 
 ---
 
 ## 6. Estadísticas del repositorio creado
 
-El repositorio final combina lo descargado por ambos arañadores (propio y Scrapy), ejecutados en paralelo sobre las mismas 22 semillas durante aproximadamente 168 horas.
+El repositorio final combina lo descargado por ambos arañadores (propio y Scrapy), ejecutados en paralelo sobre las mismas 22 semillas durante aproximadamente 180 horas.
 
 | Métrica | Valor |
 |---|---|
@@ -413,7 +419,7 @@ Son:
 ## 8. Conclusiones
 
 1. **Se cumplió el requisito con margen.** Se construyó un repositorio de **15.12 GB de texto limpio (1,440,556 documentos, 2,693,195,808 palabras, 996,383 palabras distintas)**, 51% por encima del mínimo de 10 GB, con metadatos en SQLite y una bitácora JSONL por arañador. Los totales de las bitácoras coinciden con los del repositorio (diferencia de 0.003%), lo que valida el registro.
-2. **Empezar temprano fue clave.** El arañado ético a gran escala es lento por diseño: tomó ≈ 168 horas (≈ 7 días) de ejecución casi continua. Dejar los arañadores corriendo desde el inicio permitió llegar a la meta a tiempo; no se puede comprimir ese tiempo sin romper la política de cortesía.
+2. **Empezar temprano fue clave.** El arañado ético a gran escala es lento por diseño: tomó ≈ 180 horas (≈ 7.5 días) de ejecución casi continua. Dejar los arañadores corriendo desde el inicio permitió llegar a la meta a tiempo; no se puede comprimir ese tiempo sin romper la política de cortesía.
 3. **La duración y el volumen descargado se explican por las políticas.** La cortesía acota la velocidad por sitio. Además, solo el 34.6% de las 4.16 millones de páginas analizadas terminó en el repositorio: la **deduplicación (37.0%)** y el **filtro de relevancia (28.4%)** descartaron la mayor parte. La deduplicación fue la política con más impacto, lo que confirma que en sitios de noticias un mismo contenido aparece repetido en muchas URLs.
 4. **Propio vs. Scrapy.** Ambos funcionaron y aportaron cantidades comparables (786,157 y 654,355 documentos). Scrapy analizó más páginas por segundo (3.85 frente a 3.33), gracias a su modelo asíncrono y con mucho menos código (≈ 340 frente a ≈ 650 líneas); el propio dio control total sobre la planificación por host y dejó una bitácora más completa de fallos y bloqueos. Para una necesidad como esta, en una sola máquina y con políticas a la medida, Scrapy habría sido la opción más productiva; la implementación propia es más valiosa para entender y justificar cada decisión.
 5. **Los números de cada arañador no son una prueba de velocidad pura.** Corrieron a la vez, sobre el mismo equipo y con deduplicación compartida, así que se influyeron mutuamente. La diferencia en documentos almacenados refleja también el orden de llegada a las páginas y el reparto de sitios.
