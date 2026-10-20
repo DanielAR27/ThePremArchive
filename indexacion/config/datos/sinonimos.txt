@@ -1,0 +1,13 @@
+# Sinónimos de dominio (fútbol inglés). Una línea por grupo: el primero es el término canónico y
+# los demás se reemplazan por él. Formato compatible con SynonymMap de Lucene. Líneas con # se ignoran.
+#
+# Criterio: solo pares de significado prácticamente idéntico en la colección (frecuencias tomadas de
+# estadisticas/word_counter.pkl). Se descartaron a propósito por ambiguas:
+#   manager/coach/boss (roles distintos; "boss" aparece fuera del fútbol), match/game/fixture,
+#   loss/defeat ("loss" abunda en otros sentidos), tie/draw ("cup tie" es un partido).
+football, soccer
+goalkeeper, goalie, keeper
+referee, ref
+fans, supporters
+trophy, silverware
+win, victory

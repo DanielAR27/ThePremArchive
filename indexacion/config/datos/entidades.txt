@@ -1,0 +1,33 @@
+# Entidades conocidas (clubes de la Premier League). Una por línea:
+#     término_canónico | frase 1 | frase 2 | ...
+# Cada frase se busca sin distinguir mayúsculas y se reemplaza por el término canónico, de modo que
+# "Man City", "man city" y "Manchester City" son un solo término. Complementa la detección por
+# mayúsculas (nombres = entidad), que no reconoce consultas escritas en minúsculas.
+#
+# Regla para el término canónico: el nombre corto si es inequívoco en fútbol (arsenal, leeds);
+# el completo si no (hull_city, aston_villa). Se omiten a propósito alias ambiguos:
+#   "Citizens" (también significa ciudadanos), "Villa", "Palace", "Forest" y "City" sueltos,
+#   y apodos como Magpies/Seagulls/Reds/Blues (aves, colores, o dos clubes distintos).
+#
+# Clubes de la temporada actual
+manchester_city | Manchester City | Man City
+manchester_united | Manchester United | Man United | Man Utd | Manchester Utd
+newcastle_united | Newcastle United | Newcastle Utd
+aston_villa | Aston Villa
+crystal_palace | Crystal Palace
+nottingham_forest | Nottingham Forest
+hull_city | Hull City
+tottenham | Tottenham Hotspur | Spurs
+arsenal | Gunners
+everton | Toffees
+brighton | Brighton and Hove Albion | Brighton & Hove Albion | Brighton Hove Albion
+leeds | Leeds United | Leeds Utd
+ipswich | Ipswich Town
+coventry | Coventry City
+bournemouth | AFC Bournemouth
+# Otros clubes frecuentes en la colección
+west_ham | West Ham United
+wolves | Wolverhampton Wanderers
+leicester | Leicester City
+sheffield_united | Sheffield United | Sheffield Utd
+luton | Luton Town

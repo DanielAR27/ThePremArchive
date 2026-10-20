@@ -1,0 +1,45 @@
+# Reglas de depuración de la colección (se aplican igual a todas las políticas).
+# Un documento se indexa si cumple AL MENOS UNA regla. Se evalúan con los metadatos que guardó
+# la araña en data/crawl.db (host, url, título), sin releer el texto.
+#
+# Motivo (ver documentación): dailymail.com es el 13 % de los documentos pero el 62 % del texto, y solo
+# el 7 % de sus páginas es de fútbol; otros diarios generalistas traen noticias locales y de sucesos.
+# La señal topic_hits de la araña no sirvió: las páginas del Daily Mail traen titulares de fútbol
+# en los laterales y puntúan alto aunque no traten de fútbol.
+#
+# Formato:  host = <host completo>   |   url = <regex sobre la URL>   |   titulo = <regex sobre el título>
+# (varias líneas de un mismo tipo se combinan con "o"; las regex no distinguen mayúsculas)
+
+# --- Sitios especializados en fútbol: se aceptan completos --------------------------------
+host = www.goal.com
+host = newsletters.goal.com
+host = www.transfermarkt.com
+host = www.football365.com
+host = livescore.football365.com
+host = www.planetfootball.com
+host = www.fantasyfootballscout.co.uk
+host = www.whoscored.com
+host = www.caughtoffside.com
+host = www.teamtalk.com
+
+# --- Sitios generalistas: la URL debe indicar una sección de fútbol ------------------------
+url = football|soccer|premier-?league|/epl|transfer|fixtures|matchweek
+url = /teams?/|/clubs?/|/players?/|/sport/|/sports/
+url = /scores|/match|/results|/stats|/gamecast|/game/|/db/
+url = -fc(/|$|-)|-afc(/|$)|/fc-
+
+# --- ... o el título debe hablar claramente de fútbol (páginas de club/jugador de los diarios
+#     locales, p. ej. "Arsenal FC - News, views, pictures" o "Casemiro - latest news, stats").
+#     No se usan nombres de estadios: también salen en conciertos y planes urbanísticos.
+titulo = \b(football|premier league|transfers?|striker|midfielder|goalkeeper|defender|winger)\b
+titulo = \b(fa cup|league cup|champions league|europa league|conference league|carabao|ballon d'or)\b
+titulo = \b(fc|afc)\b
+titulo = latest .{0,25}news.{0,20}(stats|injury)
+
+# --- Páginas de tema (jugador/club/competición) de diarios generalistas, p. ej.
+#     "Unai Emery - latest news, breaking stories and comment". El título no dice "fútbol", así que
+#     se exige además topic_hits >= 10 (palabras clave del dominio que contó la araña). Con ese mínimo
+#     casi todas son de fútbol; se excluye dailymail.com porque allí topic_hits sale alto por los
+#     titulares laterales aunque la página sea de otro tema.
+titulo_hits = 10 :: news, views, pictures, video|breaking stories and comment|latest news, reaction, results|news, photos and video
+titulo_hits_excluir_host = www.dailymail.com

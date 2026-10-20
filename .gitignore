@@ -1,12 +1,15 @@
-Proyecto1 - *
+Proyecto*
 
 # Repositorio de documentos y estado del arañado (no versionar: >10GB)
 repo/
 data/
 logs/
+indices/
 
 __pycache__/
 *.py[cod]
 .venv/
 venv/
 *.zip
+
+LINK_GITHUB.txt
