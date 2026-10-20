@@ -8,7 +8,7 @@ Escuela de Ingeniería en Computación
 
 **Arañadores y repositorio de texto plano sobre la Premier League**
 
-<img src="imagenes/logo.png" alt="Logo" width="180">
+<img src="../../imagenes/logo.png" alt="Logo" width="180">
 
 **Proyecto 1 – Arañador**
 
@@ -52,7 +52,7 @@ Las decisiones se justifican con la necesidad de información, con el colectivo 
 
 ### 1.1 Arquitectura general
 
-![Arquitectura general](imagenes/arquitectura.png)
+![Arquitectura general](../../imagenes/arquitectura.png)
 
 *Figura 1. Arquitectura: dos motores de arañado sobre módulos de política y almacenamiento compartidos.*
 
@@ -375,11 +375,11 @@ El repositorio final combina lo descargado por ambos arañadores (propio y Scrap
 
 ### 6.2 Curva de frecuencia de palabras
 
-![Curva de frecuencia de palabras](estadisticas/curva_frecuencia_palabras.png)
+![Curva de frecuencia de palabras](../../estadisticas/curva_frecuencia_palabras.png)
 
 La primera gráfica ordena las 996,383 palabras distintas de más a menos frecuente (eje X) contra cuántas veces aparece cada una en todo el repositorio (eje Y), ambos en escala logarítmica. La línea casi recta que se forma es exactamente lo que predice la **ley de Zipf**: en cualquier texto en lenguaje natural, unas pocas palabras (artículos, preposiciones) concentran la mayoría de las apariciones, mientras que la inmensa mayoría de las palabras distintas aparece muy pocas veces (la cola larga de la derecha). Que la curva del repositorio siga este patrón es una buena señal de que el texto extraído es lenguaje natural real y no basura de HTML, menús o código mal limpiado (Manning et al., 2008, cap. 5).
 
-![20 palabras más frecuentes](estadisticas/top_palabras.png)
+![20 palabras más frecuentes](../../estadisticas/top_palabras.png)
 
 La segunda gráfica muestra las 20 palabras más repetidas. Todas son *stopwords* del inglés (*the*, *to*, *and*, *a*, *in*...), y eso es el resultado esperado, no un error: **a propósito no se filtraron stopwords para esta estadística**, porque la ley de Zipf se demuestra justamente con ellas; son las que arman la curva de la primera gráfica. Quitarlas tendría sentido si esta cifra fuera insumo para un índice de búsqueda o para comparar temas entre documentos, pero no para medir la frecuencia de palabras de la colección completa como pide esta sección. Para la siguiente fase, se tendrán que quitar, por lo que la gráfica cambiará completamente.
 
@@ -387,7 +387,7 @@ La segunda gráfica muestra las 20 palabras más repetidas. Todas son *stopwords
 
 ## 7. URLs semilla
 
-El listado completo de URLs semilla (22, superando el mínimo de 10 pedido), usado como insumo directo por ambos arañadores, se encuentra en [`seeds.txt`](seeds.txt).
+El listado completo de URLs semilla (22, superando el mínimo de 10 pedido), usado como insumo directo por ambos arañadores, se encuentra en [`seeds.txt`](../../seeds.txt).
 
 Estas URLs son únicamente el punto de partida: el arañador extrae los enlaces internos de cada página visitada (a otras noticias, partidos, perfiles de jugadores, etc.) y los sigue recursivamente según la política de expansión (ver siguiente 3.1), lo que permite alcanzar miles de páginas dentro de los dominios semilla y así llegar al tamaño de repositorio requerido.
 
