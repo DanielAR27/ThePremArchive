@@ -6,7 +6,7 @@ from pathlib import Path
 GB = 1024**3
 
 USER_AGENT = (
-    "ThePremArchive/1.0 (+crawler academico IC8060 TEC; contacto: copperdar27@gmail.com)"
+    "ThePremArchive/1.0 (+crawler academico para curso de RIT)"
 )
 
 # Politica 3: vocabulario del dominio. Un documento se conserva solo si supera
