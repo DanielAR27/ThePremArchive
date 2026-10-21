@@ -1,0 +1,15 @@
+# Consultas de prueba para comparar las políticas (formato:  id | consulta | qué decisión de normalización pone a prueba).
+# Son consultas de fútbol como las que haría una persona; varias están pensadas para que una política
+# pueda ganar o perder frente a otra.
+q01 | haaland goals | consulta simple con un nombre propio
+q02 | arsenal transfer news | club + tema; compara stopwords y entidades
+q03 | man city vs man utd | alias de clubes (Man City, Man Utd)
+q04 | players scoring goals this season | lematización (players/player, scoring/score, goals/goal)
+q05 | the best goalkeeper in the league | stopwords (the, in, the)
+q06 | soccer transfer deadline day | sinónimo (soccer = football)
+q07 | liverpool injury news | consulta de noticias
+q08 | premier league title race | frase corriente
+q09 | relegation battle | consulta de dos palabras
+q10 | world cup england squad | competición + selección
+q11 | referee red card controversy | consulta temática sin nombres
+q12 | premier league results 5 May 2012 | fechas y números
