@@ -61,10 +61,14 @@ class Indice:
         valores = fmt.decodificar_varints(self.mm[offset:offset + plen])
         return np.cumsum(valores[0::2]), valores[1::2]
 
+    def hash_hex(self, doc_id: int) -> str:
+        """Hash del documento (64 caracteres). Se lee del arreglo y no del escalar: numpy le quita al
+        escalar los bytes finales iguales a cero, y eso rompería 1 de cada 256 hashes."""
+        return self.docs["hash"][doc_id:doc_id + 1].tobytes().hex()
+
     def ruta_documento(self, doc_id: int, repo: str) -> str:
-        reg = self.docs[doc_id]
-        hash_hex = bytes(reg["hash"]).hex()
-        return os.path.join(repo, self.hosts[int(reg["host"])], hash_hex[:2], hash_hex + ".txt")
+        hash_hex = self.hash_hex(doc_id)
+        return os.path.join(repo, self.hosts[int(self.docs[doc_id]["host"])], hash_hex[:2], hash_hex + ".txt")
 
     def buscar(self, terminos, k: int = 10):
         """Devuelve [(doc_id, similitud coseno)] de los k mejores documentos."""
