@@ -30,10 +30,14 @@ PROTEGIDAS = {
     "wanderers", "athletic", "forest", "villa", "palace", "town", "county", "albion",
 }
 
-# Palabras que NLTK trae como stopwords por venir de contracciones pero que en fútbol son informativas.
-NO_STOPWORDS = {"won"}
+# Palabras que NLTK trae como stopwords pero que en este dominio no se pueden descartar:
+#   won  -> resultado deportivo ("won", que NLTK trae por venir de "won't")
+#   will, can -> también son nombres de jugadores (Will Hughes, Will Keane, Emre Can)
+# Ocupan muy poco en el índice (will, can y may juntas son el 0.41 % de los postings), así que conservarlas no cuesta.
+NO_STOPWORDS = {"won", "will", "can"}
 # Modales y adverbios muy frecuentes que la lista de NLTK no incluye (revisión de la lista de frecuencias).
-EXTRAS_STOPWORDS = ["could", "would", "might", "must", "may", "shall", "also"]
+# "may" no está: además de verbo es el mes de mayo.
+EXTRAS_STOPWORDS = ["could", "would", "might", "must", "shall", "also"]
 
 # Plurales irregulares que sí queremos unir; las demás formas deben ser sufijos regulares.
 IRREGULARES = {"children": "child", "women": "woman", "men": "man", "feet": "foot", "teeth": "tooth",

@@ -28,7 +28,6 @@ between
 both
 but
 by
-can
 could
 couldn
 d
@@ -76,7 +75,6 @@ l
 ll
 m
 ma
-may
 me
 might
 mightn
@@ -153,7 +151,6 @@ while
 who
 whom
 why
-will
 with
 would
 wouldn

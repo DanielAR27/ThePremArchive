@@ -9,6 +9,15 @@
 #   "Citizens" (también significa ciudadanos), "Villa", "Palace", "Forest" y "City" sueltos,
 #   y apodos como Magpies/Seagulls/Reds/Blues (aves, colores, o dos clubes distintos).
 #
+# Competiciones. Se unen igual que los clubes: así "Premier League" en un documento y "premier league"
+# en una consulta dan el mismo término.
+premier_league | Premier League | English Premier League | EPL
+fa_cup | FA Cup
+league_cup | League Cup | Carabao Cup | EFL Cup | Capital One Cup
+champions_league | Champions League | UEFA Champions League
+europa_league | Europa League | UEFA Europa League
+conference_league | Conference League | UEFA Conference League
+world_cup | World Cup | FIFA World Cup
 # Clubes de la temporada actual
 manchester_city | Manchester City | Man City
 manchester_united | Manchester United | Man United | Man Utd | Manchester Utd
