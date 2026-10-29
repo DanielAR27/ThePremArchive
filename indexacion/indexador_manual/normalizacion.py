@@ -83,7 +83,7 @@ class Normalizador:
             if politica.algoritmo_stemming != "porter":
                 raise ValueError(f"algoritmo_stemming no soportado: {politica.algoritmo_stemming}")
             from nltk.stem import PorterStemmer
-            self.stemmer = PorterStemmer()
+            self.stemmer = PorterStemmer(mode=PorterStemmer.MARTIN_EXTENSIONS)
 
         alternativas = []
         if politica.normalizar_fechas and "-" in politica.formato_fecha:

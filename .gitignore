@@ -13,3 +13,5 @@ venv/
 *.zip
 
 LINK_GITHUB.txt
+
+indexacion/indexador_lucene/target/
