@@ -55,6 +55,11 @@
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <mainClass>thepremarchive.lucene.Main</mainClass>
+                  <manifestEntries>
+                    <!-- Lucene 9.12 trae clases distintas para Java 21+ (acceso a memoria con MemorySegment) en
+                         META-INF/versions/; sin esta marca Java las ignora y falla con "MemorySegmentIndexInputProvider is missing". -->
+                    <Multi-Release>true</Multi-Release>
+                  </manifestEntries>
                 </transformer>
               </transformers>
               <filters>

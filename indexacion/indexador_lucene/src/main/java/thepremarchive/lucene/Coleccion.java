@@ -40,8 +40,10 @@ final class Coleccion {
         }
         for (Path dirHost : hosts) {
             String host = dirHost.getFileName().toString();
-            try (Stream<Path> s = Files.walk(dirHost)) {
-                s.filter(Files::isRegularFile).forEach(f -> {
+            // Files.find entrega los atributos que el recorrido ya leyó; filtrar con Files::isRegularFile
+            // volvía a consultar el sistema de archivos por cada uno de los 1.4 millones de archivos.
+            try (Stream<Path> s = Files.find(dirHost, Integer.MAX_VALUE, (f, atributos) -> atributos.isRegularFile())) {
+                s.forEach(f -> {
                     String nombre = f.getFileName().toString();
                     if (nombre.endsWith(".txt") && nombre.length() == 64 + 4) {
                         docs.add(new Doc(host, nombre.substring(0, 64), f));
