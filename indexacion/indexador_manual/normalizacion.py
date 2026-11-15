@@ -138,13 +138,17 @@ class Normalizador:
         if self.p.minusculas:
             t = t.lower()
         if self.p.quitar_acentos and not t.isascii():
-            t = "".join(c for c in unicodedata.normalize("NFKD", t) if not unicodedata.combining(c))
+            # Se quita toda la categoría "marca sin espaciado" (Mn), igual que Lucene; combining() no
+            # servía porque el signo tailandés U+0E4D tiene clase combinante 0 y se quedaba.
+            t = "".join(c for c in unicodedata.normalize("NFKD", t) if unicodedata.category(c) != "Mn")
         if not t or len(t) > MAX_LONG_TERMINO or t in self.stop:
             return None
         t = self.sinonimos.get(t, t)
         if self.p.reduccion != "ninguna" and t.isalpha():
             if self.stemmer:
-                t = self.stemmer.stem(t)
+                # to_lowercase=False: stem() pasa a minúsculas por dentro y Lucene no; la política ya
+                # decidió las minúsculas arriba.
+                t = self.stemmer.stem(t, to_lowercase=False)
             else:
                 t = self.lemas.get(t, t)
         return t
