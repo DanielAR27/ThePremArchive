@@ -75,6 +75,25 @@ def tabla(titulo, cabecera, filas):
     return "\n".join(out) + "\n"
 
 
+def pasos(d):
+    """Tiempo por paso común a los dos indexadores: listado, indexación y fusión (en segundos).
+
+    Lucene los guarda con esos nombres. El indexador propio guarda normalización+bloques, mezcla y ensamblado, y el
+    total incluye el listado, que no se guarda aparte: sale restando. Indexación = normalización y bloques;
+    fusión = mezcla + ensamblado. Son pasos parecidos, no idénticos (la mezcla del propio también calcula las normas).
+    """
+    if not d:
+        return {}
+    if "segundos_listado" in d:
+        return {"listado": d["segundos_listado"], "indexacion": d.get("segundos_indexacion"),
+                "fusion": d.get("segundos_fusion") or 0.0, "total": d.get("segundos_total")}
+    f1, f2, f3 = (d.get(k) for k in ("segundos_normalizacion_y_bloques", "segundos_mezcla", "segundos_ensamblado"))
+    if None in (f1, f2, f3, d.get("segundos_total")):
+        return {"total": d.get("segundos_total")}
+    return {"listado": max(d["segundos_total"] - f1 - f2 - f3, 0.0), "indexacion": f1, "fusion": f2 + f3,
+            "total": d["segundos_total"]}
+
+
 def tabla_motor(titulo, datos):
     filas = []
     for p in POLITICAS:
@@ -116,6 +135,14 @@ def main():
     partes.append(tabla("Tabla 3. Indexador propio contra Lucene (razón = Lucene / propio)",
                         ["Política", "Tamaño propio", "Tamaño Lucene", "Razón", "Tiempo propio", "Tiempo Lucene",
                          "Razón"], filas))
+
+    filas = []
+    for p in POLITICAS:
+        a, b = pasos(propio.get(p)), pasos(lucene.get(p))
+        filas.append([NOMBRES[p]] + [tiempo(x.get(k)) for k in ("listado", "indexacion", "fusion") for x in (a, b)])
+    partes.append(tabla("Tabla 3b. Tiempo por paso, indexador propio / Lucene (el listado del propio se obtiene restando)",
+                        ["Política", "Listado propio", "Listado Lucene", "Indexación propio", "Indexación Lucene",
+                         "Fusión propio", "Fusión Lucene"], filas))
 
     pares = [("D contra A", "D", "A", "efecto de las stopwords"), ("E contra C", "E", "C", "stemming contra lematización"),
              ("F contra B", "F", "B", "efecto de los sinónimos")]
