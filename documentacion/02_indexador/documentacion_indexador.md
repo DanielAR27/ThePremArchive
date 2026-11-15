@@ -15,9 +15,9 @@ II Semestre, 2026
 
 **Integrantes:**  
 Daniel de Jesús Alemán Ruiz – 2023051957  
-Sebastián Rodríguez Sánchez – 2023074446  
+Sebastián Rodríguez Sánchez – 2023074446
 
-**Fecha de entrega:** Octubre, 2026
+**Fecha de entrega:** Noviembre, 2026
 
 </div>
 
@@ -25,285 +25,280 @@ Sebastián Rodríguez Sánchez – 2023074446
 
 ## 1. Introducción
 
-Con el arañador del primer proyecto juntamos 1 440 556 documentos de texto plano sobre la Premier League, unos 16 GB. Ahora toca poder buscar en ellos: construir un índice TF-IDF para encontrar los documentos más parecidos a una consulta sin tener que leer toda la colección cada vez.
+Con el arañador del proyecto anterior recolectamos **1 440 556 documentos** de texto sobre la Premier League (unos **16.2 GB**). Para poder buscar en ellos sin leer toda la colección cada vez, construimos un índice basado en la frecuencia de las palabras (TF-IDF) y en qué tan largo es cada documento.
 
-Lo hacemos de dos maneras, como pide el enunciado. Una es un indexador escrito por nosotros, que guarda el índice en un archivo binario con un formato propio. La otra es con Apache Lucene, usando las mismas políticas de normalización para poder comparar los dos. Las prioridades del enunciado son un índice pequeño y un tiempo de indexación corto, así que cada vez que tuvimos que elegir entre dos opciones nos fijamos en eso y, cuando se pudo, decidimos con datos de nuestra propia colección.
+Como pide el proyecto, lo implementamos de **dos formas** independientes a la araña:
 
-Los dos indexadores son programas aparte de la araña y leen exactamente los mismos archivos de configuración, así que cualquier diferencia entre sus índices viene de cómo están construidos y no de qué indexan:
+1. **Un indexador propio** en Python, que guarda todo el índice en un único archivo binario diseñado por nosotros.
+2. **Un indexador con Apache Lucene** en Java, que aplica exactamente las mismas reglas de limpieza del texto para poder compararlos en igualdad de condiciones.
+
+Ambos programas leen los mismos archivos de configuración (`.conf` y listas en `datos/`), así que cualquier diferencia de tamaño, velocidad o resultados viene de cómo cada herramienta construye y guarda el índice, y no de qué texto está procesando.
 
 ![Flujo de la indexación](../../imagenes/indexacion_flujo.png)
 
-*Figura 1. De la colección a los dos índices. La política (archivo `.conf` y listas de `datos/`) es la misma para ambos.*
+*Figura 1. Flujo general: la misma colección y la misma configuración alimentan a los dos indexadores.*
 
-## 2. Primero, mirar qué teníamos
+---
 
-Antes de normalizar nada revisamos la colección, y lo que vimos nos hizo cambiar el plan. Daily Mail es el 13 % de los documentos, pero sus páginas son muy largas y ocupan el **62 % de todo el texto**. Además, solo el 7 % de esas páginas es de fútbol. El resto son sucesos, política y noticias generales. Algo parecido, aunque en menor medida, pasa con las secciones locales de otros diarios.
+## 2. Limpieza previa de la colección
 
-Lo primero que probamos para limpiar fue usar el conteo de palabras clave de fútbol que la araña dejó guardado en cada documento (`topic_hits`). No funcionó. Las páginas del Daily Mail traen titulares de fútbol en los costados, así que sacan buen puntaje aunque el artículo sea de otra cosa, y al revés, notas cortas y buenas sobre un partido quedaban por debajo del mínimo. Lo probamos en una muestra, vimos que se equivocaba para los dos lados y lo dejamos como un experimento descartado.
+Antes de indexar revisamos qué había realmente en los 16.2 GB de texto y nos encontramos una sorpresa: **Daily Mail representaba solo el 13 % de los documentos, pero ocupaba el 62 % de todo el texto**, y apenas el 7 % de esas páginas era de fútbol. El resto eran noticias generales, política y sucesos muy largos.
 
-Lo que sí funcionó fue una regla más simple, basada en el sitio y en la URL. Los sitios especializados en fútbol (Goal, Transfermarkt, Football365 y otros) entran completos. En los sitios generalistas solo entran las páginas cuya URL o título indican que son de fútbol. Las reglas están en un archivo de texto aparte y son las mismas para todas las políticas, así que la comparación entre ellas sigue siendo justa.
+Probamos primero filtrar por el conteo de palabras de fútbol que había guardado la araña (`topic_hits`), pero falló para los dos lados: páginas no deportivas del Daily Mail tenían titulares de fútbol en la barra lateral y pasaban el filtro, mientras que notas cortas y válidas de partidos quedaban fuera.
 
-Con esto nos quedamos con 1 010 827 documentos (el 70 %), pero con solo 5.1 GB de texto de los 16.2 GB (el 31 %). En una muestra de 3 000 documentos, el índice de la política más simple pasó de 4.9 MB a 2.0 MB.
+La solución que sí funcionó fue una regla sencilla por sitio y dirección web (URL):
 
-Tiene un costo que preferimos decir claro. Probamos 15 consultas de fútbol y 6 de los 150 resultados del top 10 del índice sin depurar quedaron fuera. Son páginas de jugadoras y jugadores poco conocidos, sobre todo del fútbol femenino, que casi no mencionan palabras clave del dominio. Es un sesgo real de la regla. Decidimos aceptarlo a cambio de un índice mucho más pequeño, aunque todavía no medimos cuánto baja el tiempo de indexación.
+- Los portales especializados en fútbol (Goal, Transfermarkt, Football365, entre otros) entran completos.
+- En diarios generalistas solo entran las páginas cuya URL o título indican que son de fútbol.
+
+Con este filtro nos quedamos con **1 010 827 documentos (70 %)**, pero redujimos el texto de **16.2 GB a 5.1 GB (31 %)**. En una muestra inicial de 3 000 documentos el índice bajó de 4.9 MB a 2.0 MB.
+
+> **Costo aceptado:** al probar 15 consultas, 6 de los 150 resultados que aparecían antes en los primeros 10 puestos quedaron fuera (principalmente perfiles de jugadoras de fútbol femenino que mencionan pocas palabras clave del filtro). Aceptamos este sesgo porque limpia la mayor parte del ruido y reduce el tamaño final del índice en un **62 %** y el tiempo en un **68 %**.
+
+---
 
 ## 3. Políticas de normalización
 
-Armamos seis políticas. Tres son las que entregamos (A, B y C), y cada una agrega más cuidado a la anterior. Las otras tres cambian **una sola cosa** respecto a alguna de las anteriores, para ver qué efecto tiene esa decisión sin que se mezcle con otras.
+Normalizar significa llevar palabras escritas distinto a una forma común (por ejemplo, que `Arsenal's`, `arsenal` y `Arsenal` cuenten como la misma palabra). Preparamos **seis políticas**:
 
-| Paso de normalización | A | B | C | D | E | F |
+- **A, B y C** son las tres políticas principales que entregamos, de menor a mayor procesamiento.
+- **D, E y F** cambian **una sola regla** respecto a otra política para medir por separado el efecto real de cada decisión.
+
+| Paso aplicado al texto | A (base) | B | C | D | E | F |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| Minúsculas y separar en palabras | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
-| Posesivos (`Arsenal's` → `arsenal`) | — | ✔ | ✔ | — | ✔ | ✔ |
+| Minúsculas y separar palabras | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Quitar posesivos (`Arsenal's` → `arsenal`) | — | ✔ | ✔ | — | ✔ | ✔ |
 | Quitar acentos (`Atlético` → `atletico`) | — | ✔ | ✔ | — | ✔ | ✔ |
-| Stopwords | — | ✔ | ✔ | ✔ | ✔ | ✔ |
-| Fechas y números (`May 6, 2010` → `2010-05-06`) | — | ✔ | ✔ | — | ✔ | ✔ |
+| Quitar palabras vacías (*stopwords*) | — | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Unificar fechas y números (`May 6, 2010` → `2010-05-06`) | — | ✔ | ✔ | — | ✔ | ✔ |
 | Sinónimos (`soccer` → `football`) | — | — | ✔ | — | ✔ | ✔ |
-| Clubes y competiciones (`Man City` → `manchester_city`) | — | — | ✔ | — | ✔ | — |
-| Reducción de palabras | — | — | lemas | — | Porter | — |
-| **Para qué sirve** | base | entrega | entrega | efecto de las stopwords | stemming contra lemas | efecto de los sinónimos |
+| Clubes y torneos (`Man City` → `manchester_city`) | — | — | ✔ | — | ✔ | — |
+| Reducir a palabra base | — | — | lemas | — | Porter | — |
+| **Qué evalúa** | base | entrega | entrega | efecto de *stopwords* | *stemming* vs. lemas | efecto de sinónimos |
 
-Estas son las decisiones y por qué las tomamos:
+### Por qué tomamos cada decisión
 
-- **Posesivos.** Si se separa en el apóstrofe, `Arsenal's` deja una `s` suelta, y por eso la `s` aparecía entre las palabras más frecuentes de toda la colección. En B y C se elimina el posesivo y `Arsenal's` queda como `arsenal`.
-- **Stopwords.** Partimos de la lista en inglés de NLTK [4], porque la colección está en inglés, y le hicimos varios ajustes. Le quitamos `won` (aparece ahí por venir de "won't", pero en fútbol es una palabra clave) y también `will` y `can`, que además de verbos son nombres de jugadores (Will Hughes, Will Keane, Emre Can): con la lista original, buscar `Will Keane goals` se reducía a `keane goals` y el primer resultado era Michael Keane. Tampoco incluimos `may`, que es el verbo pero también el mes de mayo. Conservar estas tres palabras casi no cuesta nada, porque juntas son el 0.41 % de los postings del índice. En cambio, agregamos los fragmentos que deja separar apóstrofes (`s`, `t`, …) y unos cuantos verbos modales (`could`, `would`, `might`, `must`, `shall`) y el adverbio `also`. Al final son 159 palabras. Revisamos además que ningún país esté en la lista.
-- **Lematización y stemming.** Para lematizar usamos WordNet [3] a través de NLTK, pero comete errores en este dominio: por ejemplo, reducía `boss` a `bos` y `wedding` a `wed`. Por eso solo aceptamos reducciones por sufijos regulares, excluimos unas pocas palabras problemáticas y protegimos nombres de clubes escritos en minúscula (`united`, `wolves`, `spurs`). Solo lematizamos palabras que aparecen al menos 20 veces, lo que deja 21 591 reglas. En la política E comparamos contra el algoritmo de Porter [2], en la versión de referencia de su autor, que es la misma que trae Lucene (ver sección 7).
-- **Sinónimos.** Mantuvimos la lista corta a propósito: `soccer` con `football`, `goalie` con `goalkeeper`, `ref` con `referee` y poco más. Descartamos pares como `manager` y `coach`, o `loss` y `defeat`, porque en estas noticias no significan lo mismo.
-- **Fechas y números.** Las fechas en formatos como `May 6, 2010` o `6/5/2010` pasan a `2010-05-06`. A los números se les quitan los separadores de miles (`1,234` queda en `1234`), para que cuenten como un solo término. Tiene límites que conocemos: no convertimos las fechas con puntos (`11.03.2023`) ni con año de dos dígitos (`09/05/26`), ni las que no traen año (`June 10`), y las del tipo `03/05/2025` las leemos como día/mes (el uso británico), que en fuentes estadounidenses podría significar marzo 5.
-- **Clubes y competiciones.** Un archivo con los clubes de la Premier League y las competiciones principales, con sus alias, hace que `Man City`, `man city` y `Manchester City` terminen siendo un solo término (`manchester_city`), y lo mismo con `Premier League` o `World Cup`. Lo importante es que esto funciona igual escrito en mayúsculas o en minúsculas, porque la gente busca en minúsculas. Dejamos afuera a propósito apodos ambiguos como `Citizens` o `Magpies`, que también significan otras cosas. Nuestra primera versión unía cualquier secuencia de palabras con mayúscula (`Kaizer Chiefs`, `Harry Kane`), pero la descartamos al evaluarla: se explica en la sección de evaluación.
+- **Posesivos:** si simplemente cortamos en el apóstrofe, `Arsenal's` deja una `s` suelta que termina siendo de las palabras más repetidas de toda la colección. Por eso B y C la eliminan.
+- **Palabras vacías (*stopwords*):** son palabras muy comunes como *the* o *and* que no ayudan a distinguir documentos. Partimos de la lista en inglés de NLTK (Bird, Klein y Loper, 2009), de 159 palabras tras ajustarla al fútbol: sacamos de la lista `won`, `will`, `can` y `may` porque en este tema sí importan (ganar, el mes de mayo, o nombres como *Will Keane* y *Emre Can*; con la lista original buscar `Will Keane goals` devolvía a *Michael Keane*). También verificamos que no hubiera nombres de países.
+- **Fechas y números:** `May 6, 2010` y `6/5/2010` pasan a `2010-05-06` (usando orden británico día/mes), y `1,234` pasa a `1234`, para que una fecha cuente igual sin importar cómo esté escrita.
+- **Sinónimos:** usamos una lista corta y segura (`soccer` → `football`, `goalie` → `goalkeeper`, `ref` → `referee`). Dejamos fuera pares como `manager` y `coach` porque en el fútbol inglés no siempre significan lo mismo.
+- **Clubes y competiciones:** unimos los nombres y apodos principales de clubes y torneos en un solo término (`manchester_city`, `premier_league`, `world_cup`), excluyendo apodos ambiguos como `Citizens`. Al principio intentamos unir cualquier frase con mayúsculas (como `Harry Kane`), pero salió mal: la gente busca en minúsculas y luego la consulta no coincidía con el índice.
+- **Tesauro:** la lista de sinónimos y la de clubes con sus apodos hacen de tesauro sencillo: cada término preferido (`football`, `manchester_city`) agrupa a sus variantes. No tiene relaciones de "término más general" o "más específico", porque para esta colección no las necesitamos.
+- **Lemas contra *stemming* (raíces):** ambos agrupan variantes de una palabra (`injuries` → `injury`). Para lemas (C) aplicamos solo terminaciones regulares en palabras frecuentes (al menos 20 apariciones), porque el diccionario WordNet (Fellbaum, 1998) cometía errores en fútbol (por ejemplo `boss` → `bos`). Para *stemming* (E) usamos el algoritmo clásico de Porter (Porter, 1980), que es más rápido aunque a veces recorta de más (`news` → `new`).
 
-El balance de cada decisión, con lo que medimos en las secciones 5 y 6:
-
-| Decisión | Ventaja | Desventaja | Lo que medimos |
-|---|---|---|---|
-| Stopwords | Quita las palabras con las listas de postings más largas | Se pierden consultas hechas solo de stopwords y nombres como *Will* o *Can*, si no se cuidan | -13 % de tamaño (D contra A); el acierto no baja (0.53 contra 0.50) |
-| Posesivos | `Arsenal's` y `arsenal` son el mismo término; desaparece la `s` suelta | Formas como `O'Neil` quedan como `oneil` | La `s` estaba entre las palabras más frecuentes de la colección |
-| Fechas y números | Una fecha escrita de varias formas da un solo término | Formatos no cubiertos y ambigüedad día/mes (sección 3) | Con fechas normalizadas (B, C, E, F) el documento de la consulta de fechas sale primero; sin ellas (A, D), no |
-| Lematización | Une plural y singular con palabras reales (`injuries` → `injury`) | Hace coincidir texto de plantilla y depende de una lista que hay que revisar | Índice 6 % más pequeño que B, pero acierto 0.42 contra 0.53 |
-| Stemming (Porter) | No necesita lista, es determinista y viene en Lucene | Produce raíces que no son palabras (`news` → `new`) y une palabras distintas | 7 % menos términos que la lematización; casi el mismo tamaño y acierto (0.41 contra 0.42) |
-| Sinónimos | Una consulta con `soccer` encuentra documentos con `football` | Con una lista larga mete ruido; por eso es corta | Sin efecto medible en tamaño (F contra B); acierto 0.51 contra 0.53 |
-| Clubes y competiciones | `man city` y `Manchester City` se buscan igual | Hay que mantener la lista de alias a mano | Vocabulario de 1.95 M a 0.90 M términos frente a la versión por mayúsculas |
+---
 
 ## 4. El índice propio
 
-El índice sigue el modelo vectorial. Cada documento es una lista de pesos, uno por término. El peso sube con las veces que el término aparece en el documento (tf) y baja cuanto más documentos lo contienen (idf). La consulta se convierte en una lista igual, y se compara con cada documento usando el coseno [1].
+El indexador propio sigue el esquema clásico TF-IDF (Manning, Raghavan y Schütze, 2008): una palabra suma más peso cuanto más aparece en un documento, pero vale menos si sale en casi todos los documentos de la colección. En concreto, el peso de una palabra en un documento es `(1 + log10 tf) · log10(N / df)`, y consulta y documento se comparan con el coseno entre sus vectores (Salton y Buckley, 1988). Así se toma en cuenta el largo de cada documento para no darle ventaja automática a artículos larguísimos solo por repetir palabras.
 
-Para no cargar toda la colección en memoria, usamos la idea de SPIMI [5]. Varios procesos leen y normalizan los documentos en paralelo, cada uno guarda pequeños índices ordenados en bloques, y al final los bloques se mezclan en uno solo. Como construir los seis índices de la colección completa lleva cerca de una hora, el proceso guarda su avance: cada bloque se escribe primero con un nombre temporal y se renombra solo cuando está completo, así que si se corta la luz o se cierra el programa, al volver a ejecutarlo continúa donde se quedó. Lo comprobamos matando el proceso a la fuerza varias veces y verificando que el índice final sale idéntico byte a byte al de una ejecución sin interrupciones.
+Para construir el índice sin llenar la memoria RAM, varios procesos leen documentos en paralelo, guardan partes ordenadas en disco y al final las unen en un solo archivo (la estrategia conocida como SPIMI; Heinz y Zobel, 2003). Además, guarda su avance en archivos temporales antes de renombrarlos, así que si el programa se detiene a mitad de camino puede continuar donde se quedó sin perder trabajo.
 
-### 4.1 Cómo está organizado el archivo
+### 4.1 Estructura interna del archivo (`.idx`)
 
-Todo queda en un único archivo, con las partes una detrás de otra:
+Todo el índice vive en **un solo archivo binario**, dividido en seis secciones seguidas:
 
 ```text
 +----------+-----------+--------+------------+-------------+------------+
-| Cabecera | Metadatos | Hosts  | Documentos | Diccionario | Postings   |
-| 96 bytes | config    | sitios | uno por    | términos    | documentos |
-|          |           |        | documento  | ordenados   | por término|
+| Cabecera | Metadatos | Sitios | Documentos | Diccionario | Apariciones|
+| 96 bytes | config    | web    | 42 bytes   | palabras    | por palabra|
+|          |           |        | cada uno   | ordenadas   | (postings) |
 +----------+-----------+--------+------------+-------------+------------+
 ```
 
-| Parte | Qué guarda |
+| Sección | Qué guarda |
 |---|---|
-| **Cabecera** | Una marca de formato (`PREMIDX1`), la versión, cuántos documentos y términos hay, y en qué posición del archivo empieza cada parte. |
-| **Metadatos** | El archivo de configuración con que se construyó el índice, para que el propio archivo diga de qué política viene. |
-| **Hosts** | La lista de sitios de origen, para no repetir su nombre en cada documento. |
-| **Documentos** | Un registro de tamaño fijo por documento (42 bytes): su hash, su sitio, cuántas palabras tiene y su norma, que se usa para calcular el coseno. |
-| **Diccionario** | Todos los términos en orden. Cada uno guarda en cuántos documentos aparece y cuánto ocupan sus postings. |
-| **Postings** | Para cada término, los documentos donde aparece y cuántas veces. |
+| **Cabecera** | La firma `PREMIDX1`, versión, cantidad de documentos y palabras, y la posición exacta donde empieza cada sección. |
+| **Metadatos** | Copia de la configuración `.conf` usada, para saber qué política generó el archivo. |
+| **Sitios (Hosts)** | Lista de sitios web de origen, para guardar un número corto en vez de repetir el dominio en cada documento. |
+| **Documentos** | Registro fijo de 42 bytes por documento: su identificador único (hash), sitio, cantidad de palabras y factor de largo. |
+| **Diccionario** | Lista ordenada de todas las palabras distintas, en cuántos documentos sale cada una y cuánto ocupa su lista de apariciones. |
+| **Apariciones (Postings)** | Para cada palabra, la lista de documentos donde aparece y cuántas veces se repite en cada uno. |
 
-Para que el archivo ocupe poco, en las postings no se guarda el número de cada documento completo sino la diferencia con el anterior, y los enteros se escriben con los bytes justos (los menores de 128 ocupan uno solo). Los números de tamaño fijo van en *big-endian*, que es el orden en que uno los lee de corrido en un volcado hexadecimal. Así empieza un índice de prueba de 3 000 documentos visto con `hexdump -C`:
+![Campos de cada registro del índice](../../imagenes/formato_idx.png)
+
+*Figura 2. Detalle de los campos de cada sección; los números debajo indican su tamaño en bytes.*
+
+Para que el archivo ocupe poco espacio usamos dos trucos sencillos:
+1. En las apariciones no guardamos el número completo de cada documento, sino **la diferencia respecto al documento anterior** (números mucho más chicos).
+2. Esos números se guardan con **tamaño variable** (la codificación LEB128; DWARF Debugging Information Format Committee, 2017): cualquier número menor a 128 ocupa solo **1 byte**. Gracias a esto, cada aparición ocupa en promedio **2.3 bytes**.
+
+### 4.2 Inspección con `hexdump -C`
+
+Como la cabecera indica en qué byte empieza cada sección, se puede consultar las posiciones con el comando `info` y abrir cualquier parte directamente con `hexdump -C`:
+
+```bash
+python -m indexacion.indexador_manual info indices/manual_A.idx
+hexdump -C -s <posicion> -n 64 indices/manual_A.idx
+```
+
+Por ejemplo, así empiezan los primeros 32 bytes de un índice de prueba de 3 000 documentos:
 
 ```text
 00000000  50 52 45 4d 49 44 58 31  00 01 00 00 00 00 0b b8  |PREMIDX1........|
 00000010  00 01 69 00 00 00 00 00  00 1c 61 40 00 00 00 00  |..i.......a@....|
 ```
 
-- `50 52 45 4d 49 44 58 31` es la marca `PREMIDX1`.
-- `00 01` es la versión del formato (1), seguida de dos bytes reservados en cero.
-- `00 00 0b b8` es el número de documentos: 3 000.
-- `00 01 69 00` es el número de términos distintos: 92 416.
-- `00 00 00 00 00 1c 61 40` es el número de postings: 1 860 928.
+- `50 52 45 4d 49 44 58 31` → firma `PREMIDX1`.
+- `00 01` → versión 1 del formato (seguida de 2 bytes reservados en cero).
+- `00 00 0b b8` → 3 000 documentos.
+- `00 01 69 00` → 92 416 palabras distintas.
+- `00 00 00 00 00 1c 61 40` → 1 860 928 apariciones (postings).
 
-### 4.2 Campo por campo
+---
 
-![Campos de cada registro del índice](../../imagenes/formato_idx.png)
+## 5. Indexador con Apache Lucene
 
-*Figura 2. Campos de cada parte del archivo; los números bajo los campos fijos son su tamaño en bytes.*
+El segundo indexador está hecho en Java (`indexacion/indexador_lucene/`) sobre **Apache Lucene 9.12.3**. Escogimos Java directamente porque los puentes desde Python complican la instalación y no permiten escribir fácilmente filtros personalizados compatibles con nuestras políticas.
 
-La cabecera guarda dónde empieza cada parte, así que no hace falta recorrer el archivo para llegar a una de ellas. `info` imprime esas posiciones, y con ellas `hexdump` salta directo:
+Las principales decisiones en Lucene fueron:
 
-```bash
-python -m indexacion.indexador_manual info indices/manual_A.idx          # ... diccionario@<D> postings@<P>
-hexdump -C -s <D> -n 64 indices/manual_A.idx                              # primeras entradas del diccionario
-```
-
-Las partes de tamaño variable usan *varint* (LEB128 [11]): cada byte aporta 7 bits del número y su bit más alto indica si sigue otro byte. Un ejemplo construido a mano: si `arsenal` aparece en los documentos 5, 9 y 140, con frecuencias 2, 1 y 3, se guarda así:
-
-| Parte | Bytes | Cómo se lee |
+| Aspecto | Qué elegimos | Por qué |
 |---|---|---|
-| Diccionario | `07` | el término mide 7 bytes |
-| | `61 72 73 65 6e 61 6c` | `arsenal` en UTF-8 |
-| | `03` | df = 3 documentos |
-| | `07` | sus postings ocupan 7 bytes |
-| Postings | `05 02` | documento 5, tf 2 |
-| | `04 01` | documento 5 + 4 = 9, tf 1 |
-| | `83 01 03` | `83 01` = 3 + 1·128 = 131, documento 9 + 131 = 140; tf 3 |
-
-Guardar diferencias en lugar de números de documento es lo que hace pequeñas las postings: en un término frecuente los documentos están cerca unos de otros, las diferencias son chicas y casi todas caben en un byte. Por eso el índice completo usa 2.3 bytes por posting (Tabla 1), aunque el número de documento por sí solo necesitaría 3.
-
-El peso de un término en un documento es `(1 + log₁₀ tf) · log₁₀(N / df)`, y cada documento guarda la norma de su vector, calculada al terminar con los `df` definitivos. Al buscar, la consulta se pesa igual y el puntaje es el coseno entre los dos vectores; es el esquema *ltc.ltc* de la notación SMART [1][12].
-
-## 5. ¿Qué tan buenos son los resultados?
-
-El tamaño y el tiempo no lo dicen todo: un índice pequeño no sirve de nada si no encuentra lo que uno busca. Para medir la calidad armamos 12 consultas de fútbol, cada una pensada para poner a prueba una de nuestras decisiones (`man city vs man utd` para los alias de clubes, `soccer transfer deadline day` para los sinónimos, `premier league results 5 May 2012` para las fechas, y así). Corrimos cada consulta en los seis índices y juntamos los 10 primeros resultados de cada política, sin repetir documentos, que es el método del *pool* [1]. Quedaron 247 documentos distintos para marcar como relevantes o no.
-
-Las marcas las propuso una IA con un único criterio, *¿le serviría este artículo a quien escribió esa búsqueda?*, y Daniel las revisó [confirmar tras la revisión]. Los 28 casos donde el criterio era discutible quedaron señalados aparte para revisarlos con más cuidado. Con eso calculamos, para cada política, qué parte de sus 10 primeros resultados era relevante.
-
-Una aclaración sobre las versiones: la primera medición (5.1) se hizo con una lista de stopwords que todavía incluía `will`, `can` y `may`. Después las quitamos (ver la sección 3), reconstruimos los índices y repetimos la evaluación: los promedios casi no se movieron (B subió de 0.52 a 0.53 y F de 0.50 a 0.51; las demás políticas quedaron igual), así que las conclusiones no cambian. Los números que se citan a partir de 5.2 ya son los de la lista nueva.
-
-### 5.1 Primera medición
-
-| Política | Acierto promedio en los 10 primeros resultados |
-|---|:---:|
-| A | 0.50 |
-| B | 0.52 |
-| C | 0.40 |
-| D | 0.53 |
-| E | 0.38 |
-| F | 0.50 |
-
-Las políticas simples (A, B, D y F) quedaron parecidas, y las dos más elaboradas (C y E) salieron claramente peores, lo contrario de lo que esperábamos. En `players scoring goals this season`, por ejemplo, pasaron de 0.8 a 0.2, y en `world cup england squad` de 0.5 a 0.0.
-
-Al revisar la causa, el problema era nuestro. En C y E uníamos en un solo término cualquier secuencia de palabras con mayúscula, así que un documento que decía "World Cup" quedaba indexado como `world_cup`. Pero las personas escriben sus búsquedas en minúsculas, y `world cup` en una consulta se convertía en dos términos, `world` y `cup`, que no aparecían tal cual en ese documento. Los índices tenían la información, pero la consulta no podía encontrarla. En el mismo documento "England's World Cup" llegó a quedar como `englands_world_cup`, otro síntoma de lo mismo.
-
-Hubo algo que sí salió bien: la consulta de fechas tiene un único documento relevante (*Arsenal 3-3 Norwich City, 5 de mayo de 2012*), y lo encontraron en el primer puesto las políticas que normalizan fechas (B, C, E y F) pero no las que no lo hacen (A y D).
-
-### 5.2 Corrección y segunda medición
-
-Para arreglarlo cambiamos la regla: en vez de unir cualquier secuencia con mayúscula, C y E solo unen los nombres de una lista de clubes y competiciones, y esa lista se reconoce igual en mayúsculas y en minúsculas. Así la consulta y el documento producen el mismo término (`world_cup`, `premier_league`, `manchester_city`). Reconstruimos los índices C y E y repetimos la evaluación, reutilizando las marcas anteriores y juzgando solo los 30 documentos nuevos.
-
-| Política | Antes | Después |
-|---|:---:|:---:|
-| C | 0.40 | 0.42 |
-| E | 0.38 | 0.41 |
-
-El arreglo ayudó, pero poco: C y E siguen por debajo de B y D (ambas 0.53). Lo que sí cambió mucho es el índice: el vocabulario de C bajó de 1 951 097 a 895 077 términos (el tamaño casi no cambió, de 656 MB a 655 MB), porque ya no se crean cientos de miles de nombres que aparecían una sola vez.
-
-Para entender lo que quedaba miramos la consulta `liverpool injury news`, donde B acierta 0.3 y C 0.0. La consulta se normaliza igual en las dos, pero C sube a los primeros puestos unas páginas de partido de Goal.com ("Liverpool v Chelsea | Goal.com"). Al abrirlas, lo único que dicen sobre lesiones es el encabezado de su plantilla: *"Injuries and Suspensions: No sidelined players"*, es decir, que no hay ninguna. Como C lematiza, `injuries` pasa a ser `injury` y esas páginas, que son cortas y repetitivas, empiezan a coincidir con la búsqueda. B no las encuentra porque no une `injuries` con `injury`.
-
-Es un resultado que no esperábamos y que nos pareció valioso: la lematización une formas de una palabra, que en general ayuda, pero también hace coincidir texto de plantilla de páginas que no tratan del tema. En este corpus, con muchas páginas automáticas y cortas, esa ventaja no alcanza a compensar. La lección que nos dejó el episodio es que cualquier transformación aplicada al texto de los documentos debe aplicarse igual a la consulta, y que una mejora de normalización solo se puede dar por buena si se mide con búsquedas reales.
-
-## 6. Estadísticas de los índices
-
-Como son seis políticas y dos indexadores, organizamos las estadísticas en cuatro tablas: dos que describen cada indexador por separado, una que los compara, y una que mide qué cambia cada decisión de normalización. Todas las cifras son sobre la colección ya depurada (1 010 827 documentos); la política A no usa stopwords, así que no cambia con los ajustes de la lista.
-
-**Tabla 1. Indexador propio**
-
-| Política | Documentos | Tokens | Términos | Postings | Tamaño | Bytes/posting | Tiempo |
-|---|---|---|---|---|---|---|---|
-| A (base) | 1 010 827 | 900 360 645 | 847 186 | 353 851 101 | 796.6 MB | 2.25 | 4 min 47 s |
-| B | 1 010 827 | 602 639 609 | 914 776 | 301 803 452 | 695.4 MB | 2.30 | 9 min 26 s |
-| C | 1 010 827 | 591 966 960 | 895 077 | 284 645 213 | 655.2 MB | 2.30 | 11 min 20 s |
-| D (A + stopwords) | 1 010 827 | 609 442 978 | 847 027 | 300 254 717 | 689.3 MB | 2.30 | 6 min 47 s |
-| E (C con stemming) | 1 010 827 | 591 966 960 | 830 404 | 281 240 444 | 645.0 MB | 2.29 | 11 min 54 s |
-| F (B + sinónimos) | 1 010 827 | 602 639 609 | 914 769 | 301 555 105 | 694.9 MB | 2.30 | 9 min 53 s |
-
-Los tiempos de esta tabla son una primera medición: hubo ruido (por ejemplo, D salió bastante más lenta que A aunque hace casi el mismo trabajo), así que los vamos a repetir con el equipo en reposo y en el mismo orden antes de usarlos para comparar.
-
-**Tabla 2. Indexador con Lucene**
-
-<!-- Pegar aquí la Tabla 2 que imprime: python indexacion/herramientas/generar_tablas.py -->
-
-**Tabla 3. Indexador propio contra Lucene (razón = Lucene / propio)**
-
-<!-- Pegar aquí la Tabla 3 que imprime: python indexacion/herramientas/generar_tablas.py -->
-
-![Tamaño y tiempo de cada índice](../../estadisticas/comparacion_indices.png)
-
-*Figura 3. Tamaño y tiempo de indexación por política. Las columnas de documentos, tokens, términos y postings de las Tablas 1 y 2 son iguales, porque los dos indexadores producen exactamente los mismos términos (sección 7); lo único que cambia es cómo los guardan.*
-
-**Tabla 4. Efecto de cada decisión (indexador propio, cambio respecto a la segunda política de cada fila)**
-
-| Comparación | Qué se mide | Términos | Postings | Tamaño | Tiempo |
-|---|---|---|---|---|---|
-| D contra A | efecto de las stopwords | ≈ 0 % | -15 % | -13 % | pendiente |
-| E contra C | stemming contra lematización | -7 % | -1 % | -2 % | pendiente |
-| F contra B | efecto de los sinónimos | ≈ 0 % | ≈ 0 % | ≈ 0 % | pendiente |
-| A contra sin depuración | efecto de depurar la colección | -35 % | -64 % | -62 % | -65 % |
-
-El balance de cada decisión de normalización ya está resumido en la tabla del final de la sección 3. La que más pesa no es de normalización: **depurar la colección** baja el índice de 2.10 GB a 0.80 GB (62 % menos) y el tiempo de indexación de 13.7 a 4.8 minutos (65 % menos).
-
-## 7. Indexador con Apache Lucene
-
-Es un programa en Java (`indexacion/indexador_lucene/`) sobre Lucene 9.12. Está en Java porque Lucene es una biblioteca de Java: desde Python solo se puede usar a través de puentes (PyLucene, JPype), que complican la instalación y, en el caso de JPype, no permiten heredar de las clases de Lucene para escribir los filtros propios que necesitamos (sección 7.2). Lee el mismo `.conf` que el indexador propio, aplica la misma depuración e indexa los mismos documentos.
-
-### 7.1 Decisiones
-
-| Decisión | Elección | Por qué |
-|---|---|---|
-| Versión | Lucene 9.12.3 | Lucene 10 exige Java 21 y el equipo tiene Java 17 |
-| Qué se guarda del texto | Solo documentos y frecuencias (`DOCS_AND_FREQS`) | El modelo vectorial solo necesita el tf; las posiciones agrandan el índice y sirven para búsquedas por frase, que no hacemos [6] |
-| Campos guardados | Hash (32 bytes) y sitio, con `BEST_COMPRESSION` | Lo mínimo para mostrar un resultado, igual que el registro de 42 bytes del índice propio |
-| Modelo de puntaje | `ClassicSimilarity` | Es la implementación del modelo vectorial TF-IDF en Lucene; la que trae por omisión (BM25) es un modelo probabilístico [7] |
-| Archivos compuestos | Desactivados | Así cada estructura queda en su propio archivo y se puede medir su tamaño |
-| Paralelismo | Varios hilos sobre un mismo `IndexWriter` | `IndexWriter` admite hilos concurrentes: cada uno arma su propio segmento en memoria [9] |
-| Al terminar | `forceMerge(1)` | Deja un solo segmento, comparable con el archivo único del índice propio; su tiempo se mide aparte |
-
-### 7.2 Las mismas políticas en Lucene
-
-Lucene arma los términos con una cadena de análisis: un `CharFilter` que trabaja sobre el texto completo, un tokenizador y una serie de filtros de tokens. Usamos los componentes de Lucene donde se comportan igual que nuestra normalización en Python, y escribimos los nuestros donde no:
+| Versión | Lucene 9.12.3 | Funciona con Java 17 (Lucene 10 exige Java 21). |
+| Datos por palabra | Solo documento y frecuencia (`DOCS_AND_FREQS`) | No guardamos posiciones exactas de cada palabra porque no hacemos búsquedas por frase exacta, y eso ahorra mucho espacio (Apache Software Foundation, 2024a). |
+| Datos por documento | Hash y sitio comprimidos | Lo mínimo para identificar el documento en pantalla, equivalente al registro de 42 bytes del índice propio. |
+| Fórmula de puntaje | `ClassicSimilarity` | Usa el modelo TF-IDF clásico en vez de BM25 (el predeterminado de Lucene) para poder comparar bajo la misma familia de puntaje (Apache Software Foundation, 2024b). |
+| Construcción y cierre | Varios hilos y fusión final (`forceMerge(1)`) | Cada hilo arma partes en memoria y al final se unen en un solo segmento comparable con nuestro archivo único (Apache Software Foundation, 2024c). |
 
 ![Cadena de análisis del indexador Lucene](../../imagenes/lucene_analisis.png)
 
-*Figura 4. Cadena de análisis. Cada paso se activa con la misma clave del `.conf` que en el indexador propio.*
+*Figura 3. Cadena de normalización en Lucene: donde sus filtros nativos hacían algo distinto a Python (fechas, posesivos, acentos o mayúsculas), escribimos filtros propios para garantizar exactamente el mismo resultado.*
 
-| Paso | Componente de Lucene disponible | Por qué no alcanzaba |
-|---|---|---|
-| Fechas, miles y entidades | `PatternReplaceCharFilter` | Solo reemplaza por un texto fijo; una fecha necesita convertir el nombre del mes en número |
-| Posesivos | `EnglishPossessiveFilter` | Quita `'s` pero deja los apóstrofes internos (`O'Neil`) |
-| Minúsculas | `LowerCaseFilter` | Convierte carácter por carácter: `İ` queda `i`, y en Python queda `i̇` |
-| Acentos | `ASCIIFoldingFilter` | Además cambia `ß` → `ss` y `æ` → `ae`, cosa que Python no hace |
+### Verificación de equivalencia
 
-Para comprobar que los dos indexadores producen lo mismo escribimos `comparar_normalizacion.py`. Toma documentos, los normaliza con los dos y compara la lista de términos de cada uno, en orden. La comparación encontró una diferencia que no esperábamos: el `PorterStemmer` de NLTK trae por omisión reglas propias (deja `news` como `news`, mientras que el original da `new`), así que cambiamos el indexador propio a la versión de referencia de Porter, que es la que usa Lucene, y reconstruimos el índice E.
+Escribimos un script (`comparar_normalizacion.py`) para verificar que ambos indexadores produjeran **exactamente lo mismo**. Tras corregir pequeñas diferencias de texto y de algoritmo (por ejemplo, cambiar al algoritmo oficial de Porter en Python), comprobamos sobre los **1 010 827 documentos** de las seis políticas que ambos generan **los mismos documentos, las mismas palabras distintas y exactamente las mismas frecuencias**.
 
-| Prueba | Resultado |
-|---|---|
-| 3 000 documentos de prueba con los casos difíciles (fechas, posesivos, acentos, `İstanbul`, alias de clubes, bytes inválidos), seis políticas | 100 % de documentos con los mismos términos |
-| Vocabulario completo de la colección (996 322 palabras), con stemming y con lematización | 100 % iguales |
-| Índices construidos con la muestra de prueba (A, C y E) | Mismos documentos, tokens, términos y postings |
-| Colección real, [N] documentos por política | [pendiente] |
+Al correr Lucene en otra computadora también ajustamos la forma en que Java recorre los archivos de la carpeta (bajando el listado de 80 s a ~4 s) para que su tiempo refleje solo el trabajo de indexar y no la lectura del disco.
 
-## 8. Comparación entre los dos indexadores
+---
 
-Como los dos índices contienen exactamente los mismos términos y las mismas postings, las diferencias de la Tabla 3 vienen solo de cómo cada uno los guarda y los construye:
+## 6. Estadísticas de los índices
 
-| Aspecto | Indexador propio | Lucene | Ventaja / desventaja |
+Todas las cifras corresponden a la colección limpia (**1 010 827 documentos**). Como ambos indexadores procesan exactamente las mismas palabras y apariciones, esas columnas son compartidas.
+
+**Tabla 1. Resultados por política en ambos indexadores**
+
+| Política | Palabras totales | Palabras distintas | Apariciones (postings) | Tamaño propio | Tamaño Lucene | Tiempo propio | Tiempo Lucene |
+|---|---|---|---|---|---|---|---|
+| **A (base)** | 900 360 645 | 847 186 | 353 851 101 | 796.6 MB | 489.7 MB | 4 min 26 s | 2 min 31 s |
+| **B** | 602 639 609 | 914 759 | 301 803 447 | 695.4 MB | 439.6 MB | 8 min 59 s | 5 min 44 s |
+| **C** | 591 966 960 | 895 060 | 284 645 208 | 655.2 MB | 411.5 MB | 10 min 40 s | 8 min 04 s |
+| **D (A + stopwords)** | 609 442 978 | 847 027 | 300 254 717 | 689.3 MB | 434.3 MB | 4 min 31 s | 2 min 16 s |
+| **E (C con Porter)** | 591 966 960 | 831 032 | 280 784 995 | 644.1 MB | 403.1 MB | 8 min 26 s | 7 min 22 s |
+| **F (B + sinónimos)** | 602 639 609 | 914 752 | 301 555 100 | 694.9 MB | 439.3 MB | 8 min 54 s | 5 min 23 s |
+
+![Tamaño y tiempo de cada índice](../../estadisticas/comparacion_indices.png)
+
+*Figura 4. Comparación visual de tamaño y tiempo de construcción para las seis políticas.*
+
+**Sobre los tiempos:** cada uno es de una sola corrida, en un computador de escritorio, y tienen ruido. El indexador propio tardó 8 min 57 s en una corrida de la política C y 10 min 40 s en otra, así que diferencias de hasta un 20 % no son confiables. Los tiempos del propio en B, C, E y F son de una segunda corrida (reconstruimos esos índices al corregir dos detalles de normalización); los demás vienen de la corrida en que se construyeron los dos indexadores seguidos.
+
+**Tabla 2. Impacto de cada decisión por separado (indexador propio)**
+
+| Comparación | Qué mide | Palabras distintas | Apariciones | Tamaño | Tiempo |
+|---|---|---|---|---|---|
+| **D vs. A** | Quitar *stopwords* | ≈ 0 % | -15 % | -13 % | +2 % |
+| **E vs. C** | *Stemming* (Porter) vs. lemas | -7 % | -1 % | -2 % | -21 % |
+| **F vs. B** | Agregar sinónimos | ≈ 0 % | ≈ 0 % | ≈ 0 % | -1 % |
+| **A vs. sin limpiar** | Depurar el ruido inicial | -35 % | -64 % | -62 % | -68 % |
+
+### Cómo es la colección indexada
+
+Para caracterizar lo que se puede buscar, calculamos cómo son los documentos y las palabras de cada índice (con `estadisticas_extra.py`).
+
+| Política | Palabras por documento (media / mediana) | Palabras que salen en un solo documento | Apariciones que ocupan las 100 palabras más comunes |
 |---|---|---|---|
-| Archivos | Uno solo (`.idx`) con secciones | Un segmento repartido en una docena de archivos, uno por estructura | El propio es más fácil de inspeccionar con `hexdump`; los segmentos de Lucene no se modifican nunca, así que se pueden agregar documentos sin reconstruir el índice |
-| Diccionario | Lista ordenada de entradas completas, que se carga entera al abrir el índice | Términos en bloques que comparten prefijo (`.tim`) y un índice de prefijos en forma de autómata, FST (`.tip`) [8] | Lucene no repite prefijos y encuentra un término sin cargar todo el diccionario; el propio es más simple de escribir y de leer |
-| Postings | Pares varint (salto de documento, tf), uno detrás de otro | Bloques de 128 saltos y 128 frecuencias empaquetados con el mínimo de bits (FOR/PFOR), el resto en varint, y datos para saltar bloques [6][10] | El empaquetado por bloques comprime más y se decodifica más rápido; con varint cada número ocupa al menos un byte entero |
-| Peso del término | `(1 + log₁₀ tf) · log₁₀(N/df)` | `√tf · (1 + ln((N+1)/(df+1)))` [7] | Las dos atenúan el tf y premian los términos raros; la de Lucene nunca da idf cero |
-| Normalización del documento | Norma coseno exacta, 4 bytes por documento, calculada al final con los df definitivos | `1/√largo`, aproximada en 1 byte por documento y calculada al indexar cada documento [7] | La del propio es exacta pero necesita conocer toda la colección; la de Lucene se puede calcular documento por documento |
-| Construcción | Procesos (no hilos, por el GIL de Python) que escriben bloques ordenados; al final se mezclan (SPIMI) | Hilos que llenan segmentos en memoria y los escriben; luego se fusionan | Las dos ideas son la misma: armar partes pequeñas y mezclarlas |
-| Si se interrumpe | Continúa donde quedó | Se vuelve a empezar (solo conserva el último *commit*) | Nuestra reanudación sirvió en la práctica, con indexaciones largas en un equipo de escritorio |
-| Integridad | Sin verificación | Cada archivo lleva cabecera y suma de verificación (CRC32) | Lucene detecta un archivo dañado; el propio no |
+| **A (base)** | 891 / 655 | 50 % | 16 % |
+| **B** | 596 / 411 | 49 % | 14 % |
+| **C** | 586 / 403 | 50 % | 16 % |
+| **D** | 603 / 413 | 50 % | 15 % |
+| **E** | 586 / 403 | 50 % | 16 % |
+| **F** | 596 / 411 | 49 % | 14 % |
 
-<!-- Cuando estén los números reales, agregar aquí 3 o 4 viñetas que lean la Tabla 3 y la Figura 3, por ejemplo:
-- Tamaño: Lucene ocupa X veces lo del propio; la diferencia está casi toda en las postings (.doc) por el empaquetado en bloques.
-- Tiempo: ...
-- Desglose por archivo de lucene_C.stats.json (tamano_por_extension): postings X %, diccionario Y %, normas Z %, campos guardados W %. -->
+![Distribución de frecuencias de las palabras](../../estadisticas/frecuencias.png)
+
+*Figura 5. Cuántos documentos contienen cada palabra, ordenadas de la más a la menos común (escala logarítmica). Las tres políticas se parecen mucho.*
+
+- **La mitad del vocabulario aparece en un solo documento**, por ejemplo nombres raros, errores de escritura o palabras en otros idiomas. Pocas palabras salen en muchos documentos y casi todas salen en muy pocos, que es el patrón típico de los textos (Manning, Raghavan y Schütze, 2008).
+- **Sin *stopwords* (política A), las palabras más comunes son las vacías:** `to` está en el 91 % de los documentos, `a` en el 90 %, `the` en el 90 % y `s` en el 82 %. Con ellas fuera (política B) las más comunes pasan a ser del tema, como `league` (77 %), `season` (63 %), `team` (60 %) y `club` (56 %), junto con palabras que probablemente vienen de las plantillas de los sitios, como `content` (64 %) y `site` (60 %).
+- **El documento típico es corto:** la mediana es de unas 400 palabras después de limpiar y casi ninguno tiene menos de 100.
+
+### Velocidad de búsqueda
+
+También medimos cuánto tarda cada indexador en abrir un índice y en responder las 12 consultas de prueba (con `medir_consultas.py`). La consulta incluye normalizarla, buscar los 10 mejores resultados y leer su identificador, con el índice ya abierto. Cada consulta se repite 7 veces después de una pasada de calentamiento y se toma la mediana.
+
+| Política | Apertura propio | Apertura Lucene | Consulta propio (mediana / máxima) | Consulta Lucene (mediana / máxima) |
+|---|---|---|---|---|
+| **A** | 800 ms | 4.6 ms | 107 ms / 234 ms | 4.5 ms / 17 ms |
+| **B** | 1.5 s | 5.0 ms | 147 ms / 211 ms | 4.8 ms / 11 ms |
+| **C** | 985 ms | 7.9 ms | 87 ms / 222 ms | 5.2 ms / 13 ms |
+| **D** | 1.0 s | 5.0 ms | 119 ms / 194 ms | 4.9 ms / 16 ms |
+| **E** | 945 ms | 3.9 ms | 100 ms / 238 ms | 7.9 ms / 25 ms |
+| **F** | 1.2 s | 4.6 ms | 124 ms / 159 ms | 5.5 ms / 11 ms |
+
+Lucene abre el índice en milisegundos porque no carga el diccionario completo en memoria, y el propio tarda alrededor de 1 segundo en leerlo entero. Además, Lucene responde cada consulta entre 13 y 31 veces más rápido (unos 5 ms contra 90 a 150 ms). La diferencia tiene sentido: el propio calcula el coseno contra el millón de documentos con arreglos de numpy, mientras que Lucene lee solo las apariciones de las palabras de la consulta y puede saltarse bloques. Es una medición en una sola computadora y con consultas cortas; sirve para comparar, no como cifra absoluta.
+
+### Qué nos dicen los números
+
+- **Limpiar la colección es lo que más ahorra:** baja el índice de **2.10 GB a 0.80 GB** y el tiempo de **13.7 a 4.4 minutos**, mucho más que cualquier ajuste de normalización.
+- **Las *stopwords* sí ayudan:** reducen el tamaño en un **13 %** sin afectar el tiempo. Los sinónimos casi no mueven el tamaño porque nuestra lista es corta, y cambiar lemas por *stemming* reduce el vocabulario un **7 %**.
+- **Lucene comprime más y une más rápido:** ocupa entre **61 % y 63 %** del tamaño del índice propio (~1.4 bytes por aparición contra 2.3) y termina antes en todas las políticas, sobre todo en la unión final de partes (~10 s contra ~2 min). **También responde las consultas mucho más rápido**, de 13 a 31 veces.
+
+---
+
+## 7. Calidad de búsqueda y comparación entre indexadores
+
+Para comprobar si un índice más pequeño sigue encontrando lo que el usuario busca, probamos **12 consultas reales** (como `man city vs man utd`, `soccer transfer deadline day`, `premier league results 5 May 2012` y `liverpool injury news`) en las seis políticas de ambos indexadores. Evaluamos los 10 primeros resultados de cada búsqueda (427 pares en total, calificados con apoyo de IA y revisados a mano en los casos dudosos).
+
+### Dos hallazgos clave en las pruebas
+
+1. **Documento y consulta deben normalizarse igual:** en la prueba de fechas (`premier league results 5 May 2012`), solo las políticas que normalizan fechas (B, C, E y F) encontraron en primer lugar la crónica exacta del partido. Además, cuando uníamos cualquier nombre en mayúsculas, las búsquedas en minúsculas fallaban; restringirlo a la lista de clubes y torneos resolvió el problema y redujo el vocabulario de C a menos de la mitad.
+2. **La lematización puede subir páginas vacías si se premian textos cortos:** al buscar `liverpool injury news`, la política C subió páginas de partido muy cortas de Goal.com que solo tenían el título automático *"Injuries and Suspensions: No sidelined players"*. Al convertir `injuries` en `injury`, esas páginas cortas coincidían con la búsqueda y desplazaban artículos más completos en el indexador propio.
+
+### Acierto en los primeros 10 resultados (P@10)
+
+| Política | Acierto propio | Acierto Lucene | Documentos en común (top 10) | Consultas con el mismo documento en el primer puesto |
+|---|:---:|:---:|:---:|:---:|
+| **A (base)** | 0.49 | 0.49 | 14 % | 1 de 12 |
+| **B** | **0.53** | 0.60 | 19 % | 1 de 12 |
+| **C** | 0.43 | **0.62** | 16 % | 1 de 12 |
+| **D** | 0.52 | 0.60 | 16 % | 1 de 12 |
+| **E** | 0.42 | 0.61 | 17 % | 1 de 12 |
+| **F** | 0.51 | 0.60 | 18 % | 1 de 12 |
+
+Aunque ambos índices guardan **exactamente las mismas palabras y frecuencias**, solo coinciden en entre **14 % y 19 %** de sus primeros 10 resultados, y el documento que queda en primer lugar es el mismo en una sola de las 12 consultas (por ejemplo, para `haaland goals` con la política B, el propio pone primero una página de Manchester Evening News y Lucene una de Planet Football). Además, el ganador cambia según el motor:
+
+- En el **indexador propio**, la mejor relación tamaño/calidad es la política **B (0.53)**. C y E bajan porque nuestra fórmula normaliza de forma estricta por el largo total del documento y favorece páginas muy cortas (mediana de ~1 KB en los resultados).
+- En **Lucene**, que suaviza menos el efecto del largo (mediana de ~3–3.5 KB en resultados), las páginas largas y completas compiten mejor: **C empata en primer lugar (0.62)** siendo además más liviana que B (411.5 MB frente a 439.6 MB).
+
+Para calificar usamos tres criterios. Cuenta el **contenido principal** de la página, no las etiquetas ni las barras laterales. Se califica **por tema y no por fecha**, porque nuestros índices no usan fechas y `this season` o `news` no distinguen una página reciente de una vieja. Y `the league` se tomó como la **Premier League**, así que un arquero que nunca jugó en ella no cuenta. Con 12 consultas, las diferencias de 0.01 o 0.02 entre políticas no se pueden distinguir: con Lucene, B, C, D, E y F quedan juntas entre 0.60 y 0.62, y la única que queda atrás es A.
+
+### Comparación general: Indexador propio vs. Apache Lucene
+
+| Aspecto | Indexador propio | Apache Lucene | En resumen |
+|---|---|---|---|
+| **Archivos** | Un solo archivo `.idx` ordenado por secciones. | Un conjunto de archivos especializados dentro de un segmento. | El propio es fácil de inspeccionar byte a byte con `hexdump`; Lucene permite agregar documentos nuevos sin rehacer todo. |
+| **Compresión** | Diferencias entre documentos y números de tamaño variable (2.3 bytes/aparición). | Empaquetado compacto en bloques de bits y diccionario por prefijos (1.4 bytes/aparición; Lemire y Boytsov, 2015; Apache Software Foundation, 2024d). | Lucene ocupa ~38 % menos disco, abre el índice sin cargar todo el diccionario y responde las consultas entre 13 y 31 veces más rápido (sección 6). |
+| **Fórmula de largo** | Exacta sobre todo el documento. | Aproximada en 1 byte por documento. | El propio favorece páginas cortas; Lucene equilibra mejor artículos completos. |
+| **Si se interrumpe** | Reanuda desde el último bloque guardado. | Vuelve a empezar de cero. | La reanudación del propio fue muy útil en corridas largas. |
+| **Seguridad de datos** | Sin suma de verificación. | Verifica integridad en cada archivo. | Lucene detecta si un archivo del índice se corrompió. |
+
+**Conclusión:** el indexador propio nos permitió entender y controlar cada byte del formato y reanudar indexaciones interrumpidas, mientras que Lucene ofrece menor tamaño, fusiones más rápidas, mejor manejo de artículos largos y detección de errores, a cambio de mayor complejidad para adaptar reglas propias de normalización en Java.
+
+---
 
 ## Referencias
 
-1. Manning, C. D., Raghavan, P. y Schütze, H. (2008). *Introduction to Information Retrieval*. Cambridge University Press.
-2. Porter, M. F. (1980). An algorithm for suffix stripping. *Program, 14*(3), 130–137.
-3. Fellbaum, C. (ed.) (1998). *WordNet: An Electronic Lexical Database*. MIT Press.
-4. Bird, S., Klein, E. y Loper, E. (2009). *Natural Language Processing with Python*. O'Reilly.
-5. Heinz, S. y Zobel, J. (2003). Efficient single-pass index construction for text databases. *Journal of the American Society for Information Science and Technology, 54*(8), 713–729.
-6. Apache Software Foundation (2024). *Lucene912PostingsFormat* (documentación de Apache Lucene 9.12). https://lucene.apache.org/core/9_12_0/core/org/apache/lucene/codecs/lucene912/Lucene912PostingsFormat.html
-7. Apache Software Foundation (2024). *TFIDFSimilarity* y *ClassicSimilarity* (documentación de Apache Lucene 9.12). https://lucene.apache.org/core/9_12_0/core/org/apache/lucene/search/similarities/TFIDFSimilarity.html
-8. Apache Software Foundation (2024). *Lucene90BlockTreeTermsWriter* (documentación de Apache Lucene 9.12). https://lucene.apache.org/core/9_12_0/core/org/apache/lucene/codecs/lucene90/blocktree/Lucene90BlockTreeTermsWriter.html
-9. Apache Software Foundation (2024). *IndexWriter* (documentación de Apache Lucene 9.12). https://lucene.apache.org/core/9_12_0/core/org/apache/lucene/index/IndexWriter.html
-10. Lemire, D. y Boytsov, L. (2015). Decoding billions of integers per second through vectorization. *Software: Practice and Experience, 45*(1), 1–29.
-11. DWARF Debugging Information Format Committee (2017). *DWARF Debugging Information Format, Version 5*, sección 7.6 (codificación LEB128).
-12. Salton, G. y Buckley, C. (1988). Term-weighting approaches in automatic text retrieval. *Information Processing & Management, 24*(5), 513–523.
+- Apache Software Foundation (2024a). *Lucene912PostingsFormat* (documentación de Apache Lucene 9.12). https://lucene.apache.org/core/9_12_0/core/org/apache/lucene/codecs/lucene912/Lucene912PostingsFormat.html
+- Apache Software Foundation (2024b). *TFIDFSimilarity* y *ClassicSimilarity* (documentación de Apache Lucene 9.12). https://lucene.apache.org/core/9_12_0/core/org/apache/lucene/search/similarities/TFIDFSimilarity.html
+- Apache Software Foundation (2024c). *IndexWriter* (documentación de Apache Lucene 9.12). https://lucene.apache.org/core/9_12_0/core/org/apache/lucene/index/IndexWriter.html
+- Apache Software Foundation (2024d). *Lucene90BlockTreeTermsWriter* (documentación de Apache Lucene 9.12). https://lucene.apache.org/core/9_12_0/core/org/apache/lucene/codecs/lucene90/blocktree/Lucene90BlockTreeTermsWriter.html
+- Bird, S., Klein, E. y Loper, E. (2009). *Natural Language Processing with Python*. O'Reilly.
+- DWARF Debugging Information Format Committee (2017). *DWARF Debugging Information Format, Version 5*, sección 7.6 (codificación LEB128).
+- Fellbaum, C. (ed.) (1998). *WordNet: An Electronic Lexical Database*. MIT Press.
+- Heinz, S. y Zobel, J. (2003). Efficient single-pass index construction for text databases. *Journal of the American Society for Information Science and Technology, 54*(8), 713–729.
+- Lemire, D. y Boytsov, L. (2015). Decoding billions of integers per second through vectorization. *Software: Practice and Experience, 45*(1), 1–29.
+- Manning, C. D., Raghavan, P. y Schütze, H. (2008). *Introduction to Information Retrieval*. Cambridge University Press.
+- Porter, M. F. (1980). An algorithm for suffix stripping. *Program, 14*(3), 130–137.
+- Salton, G. y Buckley, C. (1988). Term-weighting approaches in automatic text retrieval. *Information Processing & Management, 24*(5), 513–523.

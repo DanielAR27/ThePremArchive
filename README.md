@@ -100,7 +100,7 @@ hexdump -C indices/manual_A.idx | head -20      # Linux/macOS; en Git Bash de Wi
 
 El formato del archivo está descrito en `indexacion/indexador_manual/formato.py` y en la sección 4 del documento.
 
-Con la colección completa depurada (1 010 827 documentos) cada política tarda entre 5 y 12 minutos y el índice pesa unos 650 a 800 MB.
+Con la colección completa depurada (1 010 827 documentos) cada política tarda entre 4 y 11 minutos (según la política y el equipo) y el índice pesa unos 650 a 800 MB.
 Además del `.idx` se escribe `indices/manual_X.idx.stats.json` con tiempos y tamaños. La depuración (qué documentos entran)
 se configura en `indexacion/config/datos/depuracion.txt`; `experimento_sin_depuracion.conf` y `experimento_filtro_tematico.conf`
 son experimentos que no forman parte de la entrega.
@@ -115,7 +115,7 @@ también se puede forzar con `--desde-cero`. Para cambiar la cantidad de proceso
 ## Indexador con Apache Lucene (Java)
 
 Programa aparte de la araña y del indexador manual. Lee los mismos `.conf` y las mismas listas de `datos/`, y aplica la
-misma depuración, así que cada política indexa los mismos documentos y los normaliza igual en los dos. Necesita Java 17
+misma depuración, así que cada política indexa los mismos documentos y los normaliza igual en los dos. Necesita Java 17 o superior (probado con 17 y 25)
 y Maven. Compilar una vez (deja `target/indexador-lucene.jar` con todas las dependencias adentro):
 
 ```bash
@@ -129,6 +129,8 @@ java -jar indexacion/indexador_lucene/target/indexador-lucene.jar build --config
 java -jar indexacion/indexador_lucene/target/indexador-lucene.jar build --config indexacion/config/politica_A.conf --limit 3000   # muestra para probar
 java -jar indexacion/indexador_lucene/target/indexador-lucene.jar info indices/lucene_A
 java -jar indexacion/indexador_lucene/target/indexador-lucene.jar buscar --config indexacion/config/politica_A.conf -k 10 manchester united goals
+java -jar indexacion/indexador_lucene/target/indexador-lucene.jar consultas --config indexacion/config/politica_A.conf -k 10 indexacion/config/datos/consultas.txt   # todas las consultas de un archivo
+java -jar indexacion/indexador_lucene/target/indexador-lucene.jar tiempos --config indexacion/config/politica_A.conf indexacion/config/datos/consultas.txt   # tiempo de apertura y de cada consulta
 ```
 
 El índice queda en la carpeta `indices/lucene_X/` (Lucene guarda cada estructura en un archivo aparte; `info` los lista
@@ -148,15 +150,17 @@ python indexacion/herramientas/construir_indices.py --simular        # muestra l
 python indexacion/herramientas/comparar_normalizacion.py --config indexacion/config/politica_C.conf --muestra 500   # ¿Lucene normaliza igual que el manual?
 python indexacion/herramientas/generar_listas.py     # regenera stopwords.txt y lemas.txt (necesita nltk.download de stopwords y wordnet)
 python indexacion/herramientas/generar_tablas.py     # tablas de estadísticas del documento, a partir de indices/*.stats.json
-python indexacion/herramientas/evaluar.py pool       # junta los mejores resultados de las seis políticas para las consultas de prueba
-python indexacion/herramientas/evaluar.py resultados # acierto en los 10 primeros resultados, con las marcas de estadisticas/evaluacion/pool_juzgado.csv
+python indexacion/herramientas/medir_consultas.py     # cuánto tarda cada indexador en abrir un índice y en responder las consultas de prueba
+python indexacion/herramientas/estadisticas_extra.py  # largo de los documentos, palabras más comunes y gráfica de frecuencias
+python indexacion/herramientas/evaluar.py pool       # junta los mejores resultados de las seis políticas, con el manual y con Lucene, para las consultas de prueba
+python indexacion/herramientas/evaluar.py resultados # acierto en los 10 primeros resultados de cada indexador y cuánto se parecen, con las marcas de estadisticas/evaluacion/pool_juzgado.csv
 ```
 
 `construir_indices.py` corre las políticas en fila y no en paralelo, porque cada una ya usa todos los núcleos.
 `comparar_normalizacion.py` toma una muestra de documentos, los normaliza con los dos indexadores y compara la lista
 de términos de cada uno, en orden; termina con código 0 solo si son idénticas.
 
-La evaluación se hace marcando en `estadisticas/evaluacion/pool_juzgado.csv` (columna `relevante`: 1 o 0) los documentos que
+`evaluar.py pool` necesita el `.jar` de Lucene compilado y los doce índices construidos. La evaluación se hace marcando en `estadisticas/evaluacion/pool_juzgado.csv` (columna `relevante`: 1 o 0) los documentos que
 devolvieron las políticas, al repetir `pool`, las marcas ya hechas se conservan y solo quedan por juzgar los documentos nuevos.
 
 ## Archivo de resultados de cada indexador
@@ -165,3 +169,13 @@ Cada indexador deja un archivo de resultados por índice en `indices/` (`manual_
 con estos campos: `documentos`, `tokens_totales`, `terminos`, `postings`, `tamano_bytes` y `segundos_total`.
 Los dos usan los mismos nombres, y con ellos `generar_tablas.py` arma las tablas. El de Lucene agrega el tamaño por tipo
 de archivo (`tamano_por_extension`) y el tiempo separado en listado, indexación y fusión de segmentos.
+
+## Documentación en PDF
+
+Los documentos de `documentacion/` se escriben en Markdown. Para pasarlos a PDF (portada centrada, sin el encabezado con el
+nombre del archivo que agrega el navegador y con número de página) hay un script; necesita `pip install markdown` y Edge o Chrome instalados.
+Correr desde la raíz del repo y volver a hacerlo cada vez que cambie el `.md`:
+
+```bash
+python documentacion/exportar_pdf.py documentacion/02_indexador/documentacion_indexador.md
+```
