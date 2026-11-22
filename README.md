@@ -57,7 +57,7 @@ hexdump -C indices/manual_A.idx | head -20
 python -m indexacion.indexador_manual buscar --config indexacion/config/politica_A.conf -k 10 manchester united goals
 ```
 
-*En Git Bash de Windows, si no tienes `hexdump`, puedes usar `xxd indices/manual_A.idx | head -20`.*
+*En Git Bash de Windows, si no tiene `hexdump`, puede usar `xxd indices/manual_A.idx | head -20`.*
 
 **Notas de ejecución:**
 - Los índices completos se guardan en `indices/manual_X.idx` (junto con `manual_X.idx.stats.json`).
