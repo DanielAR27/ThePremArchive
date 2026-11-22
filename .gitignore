@@ -15,3 +15,8 @@ venv/
 LINK_GITHUB.txt
 
 indexacion/indexador_lucene/target/
+
+# Herramientas locales de diseño y del editor (no son parte del proyecto)
+.impeccable/
+.claude/
+PRODUCT.md

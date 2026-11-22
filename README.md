@@ -23,6 +23,7 @@ Este archivo reúne únicamente las instrucciones rápidas para instalar y ejecu
 | [`indexacion/herramientas/`](indexacion/herramientas/) | Scripts para construir índices en lote, verificar equivalencia y sacar estadísticas. |
 | `repo/` y `data/crawl.db` | Colección de texto plano descargado (`.txt`) y base de datos de metadatos. |
 | `indices/` | Índices generados y sus archivos de métricas (`*.stats.json`). |
+| [`interfaz/`](interfaz/) | Interfaz web del Proyecto 3 (React + Vite): búsqueda, evaluación y métricas. Ver su [README](interfaz/README.md) y el [contrato de la API](interfaz/API.md). |
 
 ---
 
@@ -37,6 +38,11 @@ Este archivo reúne únicamente las instrucciones rápidas para instalar y ejecu
    cd indexacion/indexador_lucene && mvn -q package
    ```
    Esto genera `indexacion/indexador_lucene/target/indexador-lucene.jar`.
+3. **Node.js 18+** (solo para la interfaz web):
+   ```bash
+   cd interfaz && npm install && npm run dev
+   ```
+   Abre `http://localhost:5173`. Mientras no exista el servidor de búsqueda, usa los resultados guardados de la entrega 2.
 
 ---
 

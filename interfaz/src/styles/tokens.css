@@ -1,0 +1,89 @@
+/* ThePremArchive — the matchday programme.
+   Cream programme stock, deep olive shell, burgundy for action and selection. */
+:root {
+  /* Paper */
+  --cream-50: #fbf6ea;
+  --cream-100: #f4ecda;
+  --cream-200: #ebdfc4;
+  --cream-300: #ddcca9;
+  --cream-400: #c8b48c;
+
+  /* Olive: shell, rails, "relevant" */
+  --olive-950: #232a12;
+  --olive-900: #2f3818;
+  --olive-800: #3d4722;
+  --olive-700: #4d5a2b;
+  --olive-600: #5f6e33;
+  --olive-500: #7a8f2a; /* chart series: own index */
+  --olive-200: #d3d7ad;
+  --olive-100: #e6e6c8;
+
+  /* Burgundy: actions, selection, "not relevant" */
+  --burgundy-900: #4a1220;
+  --burgundy-800: #5e1827;
+  --burgundy-700: #6f1d2e;
+  --burgundy-600: #822438;
+  --burgundy-500: #8a2a3e; /* chart series: Lucene */
+  --burgundy-100: #f1dcd6;
+
+  /* Brass: the programme's gilt. Rules, highlights, the active tab. */
+  --brass-700: #7d5f1f;
+  --brass-500: #b48a35;
+  --brass-300: #d9bb73;
+  --brass-100: #f3e6c4;
+
+  /* Ink, tinted warm from the paper */
+  --ink: #1b1510;
+  --ink-2: #3a3027;
+  --ink-3: #5c4f40;
+  --rule: #cdbb96;
+  --rule-strong: #8a7450;
+
+  /* Roles */
+  --bg: #efe5cd;
+  --surface: #fcf8ef;
+  --surface-sunk: var(--cream-200);
+  --shell: var(--olive-800);
+  --shell-ink: var(--cream-100);
+  --shell-ink-2: #c9cba2;
+  --accent: var(--burgundy-700);
+  --accent-hover: var(--burgundy-800);
+  --relevant: var(--olive-700);
+  --relevant-bg: var(--olive-100);
+  --not-relevant: var(--burgundy-700);
+  --not-relevant-bg: var(--burgundy-100);
+  --unsure: #7a5a1c;
+  --unsure-bg: #efe0bd;
+  --focus: #a5752a;
+
+  /* Type */
+  --font-display: 'Source Serif 4 Variable', Georgia, serif;
+  --font-text: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif;
+  --font-ui: 'Archivo Variable', 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+
+  --step--2: 0.6875rem; /* 11 */
+  --step--1: 0.78125rem; /* 12.5 */
+  --step-0: 0.875rem; /* 14 */
+  --step-1: 0.9375rem; /* 15 */
+  --step-2: 1.125rem; /* 18 */
+  --step-3: 1.375rem; /* 22 */
+  --step-4: 1.75rem; /* 28 */
+  --step-5: 2.375rem; /* 38 */
+  --step-6: 3.25rem; /* 52 */
+
+  /* Space: 4px base */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s8: 32px;
+  --s10: 40px;
+
+  --rail: 244px;
+  --aside: 288px;
+  --radius: 3px;
+  --shadow-pop: 0 6px 18px -6px rgb(35 29 23 / 0.28), 0 1px 3px rgb(35 29 23 / 0.12);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
