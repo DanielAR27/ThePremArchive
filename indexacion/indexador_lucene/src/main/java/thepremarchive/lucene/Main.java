@@ -18,6 +18,9 @@ import java.util.List;
  *
  *   java -jar indexacion/indexador_lucene/target/indexador-lucene.jar consultas --config indexacion/config/politica_A.conf [-k 10] indexacion/config/datos/consultas.txt
  *
+ *   java -jar indexacion/indexador_lucene/target/indexador-lucene.jar servir --config indexacion/config/politica_C.conf [--puerto 8081]
+ *
+ * "servir" abre el índice y responde búsquedas por HTTP para la aplicación web (ver Servidor.java).
  * "consultas" corre todas las consultas de un archivo y la usa indexacion/herramientas/evaluar.py (comparar).
  * "terminos" imprime, por archivo, una línea "ruta<TAB>término término ...": la usa
  * indexacion/herramientas/comparar_normalizacion.py para verificar que Lucene normaliza igual que el indexador propio.
@@ -32,7 +35,7 @@ public final class Main {
             uso();
         }
         String config = null;
-        int limite = 0, hilos = 0, k = 10, repeticiones = 7;
+        int limite = 0, hilos = 0, k = 10, repeticiones = 7, puerto = 8081;
         List<String> resto = new ArrayList<>();
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
@@ -41,6 +44,7 @@ public final class Main {
                 case "-t": case "--hilos": hilos = Integer.parseInt(args[++i]); break;
                 case "-k": k = Integer.parseInt(args[++i]); break;
                 case "--repeticiones": repeticiones = Integer.parseInt(args[++i]); break;
+                case "--puerto": puerto = Integer.parseInt(args[++i]); break;
                 default: resto.add(args[i]);
             }
         }
@@ -56,6 +60,9 @@ public final class Main {
                     uso();
                 }
                 Buscar.lote(requerir(config), resto.get(0), k);
+                break;
+            case "servir":
+                Servidor.servir(requerir(config), puerto);
                 break;
             case "tiempos":
                 if (resto.size() != 1) {

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block titulo %}{{ consulta }} – The Prem Archive{% endblock %}
+{% block contenido %}
+<section class="resultados">
+  <form class="buscador" action="/search" method="get" role="search">
+    <input type="search" name="q" value="{{ consulta }}" aria-label="Search">
+    <button type="submit">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span>Search</span>
+    </button>
+  </form>
+
+  <p class="resumen">
+    {{ total }} result{{ '' if total == 1 else 's' }} in {{ '%.0f'|format(tiempo) }} ms
+    {% if terminos %}· searched for <span class="terminos">{{ terminos|join(' · ') }}</span>{% endif %}
+  </p>
+
+  {% if not resultados %}
+    <div class="vacio">
+      <h2>No results</h2>
+      <p>Try different words, or fewer of them. Very common words such as “the” are ignored.</p>
+    </div>
+  {% endif %}
+
+  <ol class="lista" start="{{ (pagina - 1) * 10 + 1 }}">
+    {% for r in resultados %}
+    <li class="resultado">
+      <div class="meta">
+        <span class="sitio">{{ r.sitio }}</span>
+        {% if r.fecha %}<span class="fecha">{{ r.fecha }}</span>{% endif %}
+      </div>
+      <h2><a href="{{ r.enlace }}" target="_blank" rel="noopener">{{ r.titulo }}</a></h2>
+      <div class="url">{{ r.url }}</div>
+      {% if r.fragmento %}<p class="fragmento">{{ r.fragmento }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+
+  {% if paginas > 1 %}
+  <nav class="paginas" aria-label="Pages">
+    {% if pagina > 1 %}<a href="/search?q={{ consulta|urlencode }}&page={{ pagina - 1 }}&qid={{ consulta_id }}">← Previous</a>{% endif %}
+    <span>Page {{ pagina }} of {{ paginas }}</span>
+    {% if pagina < paginas %}<a href="/search?q={{ consulta|urlencode }}&page={{ pagina + 1 }}&qid={{ consulta_id }}">Next →</a>{% endif %}
+  </nav>
+  {% endif %}
+
+  <p class="invitacion">Were these results useful? <a href="/evaluate?q={{ consulta|urlencode }}">Rate them</a> to help us measure the search.</p>
+</section>
+{% endblock %}

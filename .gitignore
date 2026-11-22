@@ -15,3 +15,5 @@ venv/
 LINK_GITHUB.txt
 
 indexacion/indexador_lucene/target/
+# Datos de uso de la aplicación web (marcas de relevancia y estadísticas): se respaldan aparte
+web_app/datos/

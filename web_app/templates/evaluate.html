@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block titulo %}Rate “{{ consulta }}” – The Prem Archive{% endblock %}
+{% block contenido %}
+<section class="resultados evaluacion">
+  <p class="migas"><a href="/evaluate">← Another search</a></p>
+  <h1 class="titulo-pagina">Rate the results for “{{ consulta }}”</h1>
+  <p class="intro">
+    Open a result if you need to (it opens in a new tab), then choose one option for each one.
+    <strong>Relevant</strong> means the page is about what you were looking for.
+  </p>
+
+  {% if not resultados %}
+    <div class="vacio">
+      <h2>No results to rate</h2>
+      <p>Try different words.</p>
+      <p><a href="/evaluate">Try another search</a></p>
+    </div>
+  {% else %}
+  <form method="post" action="/evaluate/submit">
+    <input type="hidden" name="qid" value="{{ consulta_id }}">
+    <ol class="lista">
+      {% for r in resultados %}
+      <li class="resultado con-juicio">
+        <div class="contenido">
+          <div class="meta">
+            <span class="sitio">{{ r.sitio }}</span>
+            {% if r.fecha %}<span class="fecha">{{ r.fecha }}</span>{% endif %}
+          </div>
+          <h2><a href="{{ r.enlace }}" target="_blank" rel="noopener">{{ r.titulo }}</a></h2>
+          {% if r.fragmento %}<p class="fragmento">{{ r.fragmento }}</p>{% endif %}
+        </div>
+        <fieldset class="juicio">
+          <legend class="solo-lectores">Is “{{ r.titulo }}” relevant?</legend>
+          <label><input type="radio" name="r_{{ r.hash }}" value="1" required><span>Relevant</span></label>
+          <label><input type="radio" name="r_{{ r.hash }}" value="0"><span>Not relevant</span></label>
+          <label><input type="radio" name="r_{{ r.hash }}" value="-1"><span>Can’t tell</span></label>
+        </fieldset>
+      </li>
+      {% endfor %}
+    </ol>
+
+    <fieldset class="satisfaccion">
+      <legend class="solo-lectores">Overall, did these results give you what you were looking for?</legend>
+      <p class="satisfaccion-pregunta" aria-hidden="true">Overall, did these results give you what you were looking for?</p>
+      <div class="satisfaccion-opciones">
+        <label><input type="radio" name="sat" value="2" required><span>Yes</span></label>
+        <label><input type="radio" name="sat" value="1"><span>Partly</span></label>
+        <label><input type="radio" name="sat" value="0"><span>No</span></label>
+      </div>
+    </fieldset>
+
+    <div class="acciones">
+      <button type="submit" class="boton">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+        <span>Submit my ratings</span>
+      </button>
+    </div>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

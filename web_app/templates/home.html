@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block clase %}portada{% endblock %}
+{% block contenido %}
+<section class="hero">
+  <img class="hero-logo" src="{{ url_for('static', filename='logo.png') }}" alt="The Prem Archive" width="220">
+  <h1>The Prem Archive</h1>
+  <p class="lema">Search news, results, transfers and stories from over a million Premier League pages.</p>
+  <form class="buscador grande" action="/search" method="get" role="search">
+    <input type="search" name="q" placeholder="Try “arsenal transfer news”" autofocus required aria-label="Search">
+    <button type="submit">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span>Search</span>
+    </button>
+  </form>
+  <div class="ejemplos">
+    <span>Try:</span>
+    {% for e in ejemplos %}<a href="/search?q={{ e|urlencode }}">{{ e }}</a>{% endfor %}
+  </div>
+  <p class="ayuda">Help us improve: after searching, use <a href="/evaluate">Rate results</a> to tell us which results were useful.</p>
+</section>
+{% endblock %}
