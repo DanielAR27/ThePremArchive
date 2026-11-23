@@ -6,7 +6,6 @@ import logoMark from './assets/logo-mark-cream.png';
 import SearchPage from './pages/SearchPage.jsx';
 import EvaluatePage from './pages/EvaluatePage.jsx';
 import MetricsPage from './pages/MetricsPage.jsx';
-import { fmtInt } from './lib/format.jsx';
 
 const InfoContext = createContext(null);
 export const useInfo = () => useContext(InfoContext);
@@ -36,7 +35,7 @@ export default function App() {
                 <Search size={16} strokeWidth={2} aria-hidden /> Search
               </NavLink>
               <NavLink to="/evaluate">
-                <ClipboardCheck size={16} strokeWidth={2} aria-hidden /> Evaluate
+                <ClipboardCheck size={16} strokeWidth={2} aria-hidden /> Rate results
               </NavLink>
               <NavLink to="/metrics">
                 <BarChart3 size={16} strokeWidth={2} aria-hidden /> Metrics
@@ -68,20 +67,6 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         )}
-
-        <footer className="colophon">
-          <div className="colophon-inner">
-            <span>
-              ThePremArchive · IC8060 Information Retrieval · Instituto Tecnológico de Costa Rica · 2026
-            </span>
-            {info && (
-              <span className="num">
-                {fmtInt(info.collection.documents)} documents indexed from {fmtInt(info.collection.crawled)} crawled
-                pages
-              </span>
-            )}
-          </div>
-        </footer>
       </div>
     </InfoContext.Provider>
   );

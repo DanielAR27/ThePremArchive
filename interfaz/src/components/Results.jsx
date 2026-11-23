@@ -3,7 +3,7 @@ import logoMark from '../assets/logo-mark-cream.png';
 import { fmtDate, highlight, shortHost } from '../lib/format.jsx';
 
 /** One line of the team sheet: shirt number, title to the original page, provenance, snippet. */
-export function ResultRow({ r, words, index = 0, children, className = '', ...rest }) {
+export function ResultRow({ r, words, index = 0, showScore = true, children, className = '', ...rest }) {
   const date = fmtDate(r.publishedAt);
   return (
     <li className={`row ${className}`} style={{ '--i': index }} {...rest}>
@@ -18,9 +18,11 @@ export function ResultRow({ r, words, index = 0, children, className = '', ...re
         <div className="row-meta">
           <span className="row-host">{shortHost(r.host)}</span>
           {date && <span>{date}</span>}
-          <span className="num" title="Cosine similarity (tf-idf)">
-            score {r.score.toFixed(4)}
-          </span>
+          {showScore && (
+            <span className="num" title="Cosine similarity (tf-idf)">
+              score {r.score.toFixed(4)}
+            </span>
+          )}
           {children?.meta}
         </div>
         {r.snippet && <p className="row-snippet">{highlight(r.snippet, words)}</p>}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { api } from '../api/client.js';
 import { useInfo } from '../App.jsx';
@@ -14,12 +15,12 @@ const SCORES = [
   { key: 'ndcg10', name: 'nDCG@10', def: 'Ranking quality against the ideal order, discounting lower positions.' },
 ];
 const COLUMNS = [
-  { key: 'judged', label: 'Judged', fmt: (v) => v },
-  { key: 'p5', label: 'P@5', fmt: fmt2 },
-  { key: 'p10', label: 'P@10', fmt: fmt2 },
-  { key: 'rr', label: 'RR', fmt: fmt2 },
-  { key: 'ap', label: 'AP', fmt: fmt2 },
-  { key: 'ndcg10', label: 'nDCG@10', fmt: fmt2 },
+  { key: 'judged', label: 'Rated', title: 'How many of the top 10 results have been rated', fmt: (v) => v },
+  { key: 'p5', label: 'P@5', title: 'Precision at 5: share of the top 5 results that are relevant', fmt: fmt2 },
+  { key: 'p10', label: 'P@10', title: 'Precision at 10: share of the top 10 results that are relevant', fmt: fmt2 },
+  { key: 'rr', label: 'RR', title: 'Reciprocal rank: 1 ÷ position of the first relevant result', fmt: fmt2 },
+  { key: 'ap', label: 'AP', title: 'Average precision across the top 10 results', fmt: fmt2 },
+  { key: 'ndcg10', label: 'nDCG@10', title: 'Normalized discounted cumulative gain at 10', fmt: fmt2 },
 ];
 
 export default function MetricsPage() {
@@ -56,6 +57,10 @@ export default function MetricsPage() {
     };
   }, [engine, policy, baseline, info]);
 
+  const showEngines = Boolean(info && info.engines.length > 1);
+  const showPolicies = Boolean(info && info.policies.length > 1);
+  const lab = showEngines || showPolicies;
+  const showFilters = lab || api.isMock;
   const keys = info ? info.engines.map((e) => e.id) : [];
   const m = state.byEngine?.[engine];
   const other = keys.find((k) => k !== engine);
@@ -83,43 +88,156 @@ export default function MetricsPage() {
   const engineLabel = (id) => SERIES[id]?.label || id;
   const toggleSort = (key) => setSort((s) => ({ key, dir: s.key === key ? -s.dir : key === 'id' ? 1 : -1 }));
 
+  const topicTable = m && (
+    <figure className="figure">
+      <div className="figure-head">
+        <h2>{lab ? 'Every query' : 'Every topic'}</h2>
+        <span className="figure-note">
+          {lab ? `${engineLabel(engine)}, policy ${policy} · select a column to sort` : 'Select a column to sort · click any topic to rate it'}
+        </span>
+      </div>
+      <div className="table-wrap">
+        <table className="data">
+          <thead>
+            <tr>
+              <th scope="col" aria-sort={sort.key === 'id' ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}>
+                <button type="button" onClick={() => toggleSort('id')}>
+                  {lab ? 'Query' : 'Topic'} <SortIcon on={sort.key === 'id'} dir={sort.dir} />
+                </button>
+              </th>
+              {COLUMNS.map((c) => (
+                <th
+                  key={c.key}
+                  scope="col"
+                  title={c.title}
+                  aria-sort={sort.key === c.key ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}
+                >
+                  <button type="button" onClick={() => toggleSort(c.key)} title={c.title}>
+                    {c.label} <SortIcon on={sort.key === c.key} dir={sort.dir} />
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((q) => (
+              <tr key={q.id}>
+                <td className="q">
+                  <Link
+                    className="topic-link"
+                    to={`/evaluate?query=${q.id}${lab ? `&engine=${engine}&policy=${policy}` : ''}`}
+                    title={`Rate results for “${q.text}”`}
+                  >
+                    <b>{Number(q.id.slice(1))}</b>
+                    {q.text}
+                  </Link>
+                </td>
+                {COLUMNS.map((c) => (
+                  <td key={c.key} className={c.key !== 'judged' && q[c.key] === 1 ? 'best' : undefined}>
+                    {c.fmt(q[c.key])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </figure>
+  );
+
+  const contributorsCard = m && (
+    <figure className="figure">
+      <div className="figure-head">
+        <h2>{lab ? 'Who judged' : 'Who rated'}</h2>
+        <span className="figure-note num">{fmtInt(m.summary.judged)} results rated</span>
+      </div>
+      <div className="table-wrap">
+        <table className="data">
+          <thead>
+            <tr>
+              <th scope="col">{lab ? 'Evaluator' : 'Contributor'}</th>
+              <th scope="col">{lab ? 'Judgments' : 'Ratings'}</th>
+              <th scope="col">Relevant</th>
+              <th scope="col">Last</th>
+            </tr>
+          </thead>
+          <tbody>
+            {m.baseline && (
+              <tr>
+                <td className="left">{m.baseline.label}</td>
+                <td>{fmtInt(m.baseline.judgments)}</td>
+                <td>{fmtInt(m.baseline.relevant)}</td>
+                <td>{shortDate(m.baseline.date)}</td>
+              </tr>
+            )}
+            {evaluators.map((e) => (
+              <tr key={e.name}>
+                <td className="left">{e.name}</td>
+                <td>{e.total}</td>
+                <td>{e.relevant}</td>
+                <td>{shortDate(e.last)}</td>
+              </tr>
+            ))}
+            {!evaluators.length && !m.baseline && (
+              <tr>
+                <td className="left" colSpan={4} style={{ whiteSpace: 'normal', color: 'var(--ink-3)' }}>
+                  No one has rated results yet. <Link to="/evaluate">Open Rate results</Link> to start.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <figcaption className="figure-note">
+        {lab
+          ? 'Definitions follow Manning, Raghavan & Schütze (2008), ch. 8. “Unsure” counts as rated but not relevant.'
+          : '“Unsure” counts toward progress, and counts as not relevant in precision scores.'}
+      </figcaption>
+    </figure>
+  );
+
   return (
     <div className="metrics">
       <header className="metrics-head">
         <div>
           <h1>Metrics</h1>
           <p>
-            How well each engine answers the twelve test queries, scored against the relevance judgments. Unjudged
-            results count as not relevant, so scores rise as more results are judged.
+            {lab
+              ? 'How well each engine answers the twelve sample queries, scored against the relevance ratings. Unrated results count as not relevant, so scores rise as more results are rated.'
+              : 'How well the search answers the twelve suggested topics, based on community relevance ratings. Unrated results count as not relevant, so scores rise as more results are rated.'}
           </p>
         </div>
-        {info && (
+        {showFilters && (
           <div className="filters">
-            <label className="field">
-              <span className="field-label">Engine</span>
-              <select className="select" value={engine || ''} onChange={(e) => setEngine(e.target.value)}>
-                {info.engines.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="field-label">Normalization policy</span>
-              <select className="select" value={policy || ''} onChange={(e) => setPolicy(e.target.value)}>
-                {info.policies.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.id} · {p.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {showEngines && (
+              <label className="field">
+                <span className="field-label">Engine</span>
+                <select className="select" value={engine || ''} onChange={(e) => setEngine(e.target.value)}>
+                  {info.engines.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {showPolicies && (
+              <label className="field">
+                <span className="field-label">Normalization policy</span>
+                <select className="select" value={policy || ''} onChange={(e) => setPolicy(e.target.value)}>
+                  {info.policies.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.id} · {p.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {api.isMock && (
               <label className="check" style={{ paddingBottom: 8 }}>
                 <input type="checkbox" checked={baseline} onChange={(e) => setBaseline(e.target.checked)} />
                 <span>
-                  Include the judgments
+                  Include the ratings
                   <br />
                   from project 2
                 </span>
@@ -135,7 +253,7 @@ export default function MetricsPage() {
           <p>{state.error}</p>
         </div>
       )}
-      {!m && state.status !== 'error' && <Crawling label="Counting the judgments…" rows={3} />}
+      {!m && state.status !== 'error' && <Crawling label="Counting the ratings…" rows={3} />}
 
       {m && (
         <>
@@ -166,11 +284,11 @@ export default function MetricsPage() {
           <div className="chart-grid">
             <figure className="figure">
               <div className="figure-head">
-                <h2>Precision at 10, by query</h2>
-                <Legend keys={keys} />
+                <h2>{lab ? 'Precision at 10, by query' : 'Precision at 10, by topic'}</h2>
+                {keys.length > 1 && <Legend keys={keys} />}
               </div>
               <HBarChart
-                label={`Precision at 10 for each test query, policy ${policy}, both engines`}
+                label={`Precision at 10 for each topic${lab ? `, policy ${policy}` : ''}`}
                 keys={keys}
                 rows={m.perQuery.map((q, i) => ({
                   label: q.text,
@@ -179,34 +297,39 @@ export default function MetricsPage() {
                 }))}
               />
               <figcaption className="figure-note">
-                Policy {policy}. Each pair of bars is one query; the longer the bar, the more of the top ten was judged
-                relevant.
+                {lab
+                  ? `Policy ${policy}. Each pair of bars is one query; the longer the bar, the more of the top ten was rated relevant.`
+                  : 'Each bar shows how many of the top ten results were rated relevant for that topic.'}
               </figcaption>
             </figure>
 
-            <figure className="figure">
-              <div className="figure-head">
-                <h2>Mean average precision, by policy</h2>
-                <Legend keys={keys} />
-              </div>
-              <VBarChart
-                label="Mean average precision for every normalization policy and engine"
-                keys={keys}
-                highlight={policy}
-                groups={info.policies.map((p) => ({
-                  label: p.id,
-                  short: p.label.split(/[ ,]/)[0],
-                  title: `Policy ${p.id} · ${p.label}`,
-                  values: Object.fromEntries(
-                    keys.map((k) => [k, m.byConfig.find((c) => c.engine === k && c.policy === p.id)?.map]),
-                  ),
-                }))}
-              />
-              <figcaption className="figure-note">
-                Same judgments, every policy. It shows which normalization decisions from project 2 paid off in
-                ranking quality.
-              </figcaption>
-            </figure>
+            {showPolicies ? (
+              <figure className="figure">
+                <div className="figure-head">
+                  <h2>Mean average precision, by policy</h2>
+                  <Legend keys={keys} />
+                </div>
+                <VBarChart
+                  label="Mean average precision for every normalization policy and engine"
+                  keys={keys}
+                  highlight={policy}
+                  groups={info.policies.map((p) => ({
+                    label: p.id,
+                    short: p.label.split(/[ ,]/)[0],
+                    title: `Policy ${p.id} · ${p.label}`,
+                    values: Object.fromEntries(
+                      keys.map((k) => [k, m.byConfig.find((c) => c.engine === k && c.policy === p.id)?.map]),
+                    ),
+                  }))}
+                />
+                <figcaption className="figure-note">
+                  Same ratings, every policy. It shows which normalization decisions from project 2 paid off in ranking
+                  quality.
+                </figcaption>
+              </figure>
+            ) : (
+              contributorsCard
+            )}
           </div>
 
           <figure className="figure">
@@ -223,11 +346,11 @@ export default function MetricsPage() {
                 </span>
                 <span>
                   <i className="hatch" />
-                  Not judged yet
+                  Not rated yet
                 </span>
               </div>
             </div>
-            <div className="strip" role="table" aria-label={`Judgment of each of the top ten results, ${engineLabel(engine)}, policy ${policy}`}>
+            <div className="strip" role="table" aria-label={`Rating of each of the top ten results${lab ? `, ${engineLabel(engine)}, policy ${policy}` : ''}`}>
               <span role="columnheader" />
               {Array.from({ length: 10 }, (_, i) => (
                 <span key={i} className="h" role="columnheader">
@@ -245,7 +368,7 @@ export default function MetricsPage() {
                   </span>
                   {Array.from({ length: 10 }, (_, i) => {
                     const r = q.relevantAtRank[i];
-                    const word = r === 1 ? 'relevant' : r === 0 ? 'not relevant' : 'not judged';
+                    const word = r === 1 ? 'relevant' : r === 0 ? 'not relevant' : 'not rated';
                     return (
                       <span
                         key={i}
@@ -263,108 +386,20 @@ export default function MetricsPage() {
               ))}
             </div>
             <figcaption className="figure-note">
-              {engineLabel(engine)}, policy {policy}. Read across a row to see where the good results sit; a strong
-              engine fills the left side.
+              {lab
+                ? `${engineLabel(engine)}, policy ${policy}. Read across a row to see where the good results sit; a strong engine fills the left side.`
+                : 'Read across a row to see where relevant results appear; stronger rankings fill the left side.'}
             </figcaption>
           </figure>
 
-          <div className="lower-grid">
-            <figure className="figure">
-              <div className="figure-head">
-                <h2>Every query</h2>
-                <span className="figure-note">
-                  {engineLabel(engine)}, policy {policy} · select a column to sort
-                </span>
-              </div>
-              <div className="table-wrap">
-                <table className="data">
-                  <thead>
-                    <tr>
-                      <th scope="col" aria-sort={sort.key === 'id' ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}>
-                        <button type="button" onClick={() => toggleSort('id')}>
-                          Query <SortIcon on={sort.key === 'id'} dir={sort.dir} />
-                        </button>
-                      </th>
-                      {COLUMNS.map((c) => (
-                        <th
-                          key={c.key}
-                          scope="col"
-                          aria-sort={sort.key === c.key ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}
-                        >
-                          <button type="button" onClick={() => toggleSort(c.key)}>
-                            {c.label} <SortIcon on={sort.key === c.key} dir={sort.dir} />
-                          </button>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map((q) => (
-                      <tr key={q.id}>
-                        <td className="q">
-                          <b>{Number(q.id.slice(1))}</b>
-                          {q.text}
-                        </td>
-                        {COLUMNS.map((c) => (
-                          <td key={c.key} className={c.key !== 'judged' && q[c.key] === 1 ? 'best' : undefined}>
-                            {c.fmt(q[c.key])}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </figure>
-
-            <figure className="figure">
-              <div className="figure-head">
-                <h2>Who judged</h2>
-                <span className="figure-note num">{fmtInt(m.summary.judged)} documents judged</span>
-              </div>
-              <div className="table-wrap">
-                <table className="data">
-                  <thead>
-                    <tr>
-                      <th scope="col">Evaluator</th>
-                      <th scope="col">Judgments</th>
-                      <th scope="col">Relevant</th>
-                      <th scope="col">Last</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {m.baseline && (
-                      <tr>
-                        <td className="left">{m.baseline.label}</td>
-                        <td>{fmtInt(m.baseline.judgments)}</td>
-                        <td>{fmtInt(m.baseline.relevant)}</td>
-                        <td>{shortDate(m.baseline.date)}</td>
-                      </tr>
-                    )}
-                    {evaluators.map((e) => (
-                      <tr key={e.name}>
-                        <td className="left">{e.name}</td>
-                        <td>{e.total}</td>
-                        <td>{e.relevant}</td>
-                        <td>{shortDate(e.last)}</td>
-                      </tr>
-                    ))}
-                    {!evaluators.length && !m.baseline && (
-                      <tr>
-                        <td className="left" colSpan={4} style={{ whiteSpace: 'normal', color: 'var(--ink-3)' }}>
-                          No one has judged yet. Open Evaluate to start.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <figcaption className="figure-note">
-                Definitions follow Manning, Raghavan &amp; Schütze (2008), ch. 8. “Unsure” counts as judged but not
-                relevant.
-              </figcaption>
-            </figure>
-          </div>
+          {showPolicies ? (
+            <div className="lower-grid">
+              {topicTable}
+              {contributorsCard}
+            </div>
+          ) : (
+            topicTable
+          )}
         </>
       )}
     </div>
