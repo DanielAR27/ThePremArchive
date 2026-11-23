@@ -1,5 +1,6 @@
-"""Base de datos de uso (SQLite): quién buscó qué, qué abrió y qué marcó como relevante. De aquí salen las
-métricas y las estadísticas de uso del documento."""
+"""Base de datos de la aplicación (SQLite): los juicios de relevancia que dan las personas y las búsquedas que hacen.
+De aquí salen las métricas y las estadísticas de uso del documento."""
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -7,52 +8,46 @@ from datetime import datetime, timezone
 from . import config
 
 ESQUEMA = """
-CREATE TABLE IF NOT EXISTS consultas (
-    id           INTEGER PRIMARY KEY,
-    sesion       TEXT NOT NULL,
-    texto        TEXT NOT NULL,
-    modo         TEXT NOT NULL,          -- 'search' (solo buscar) o 'evaluate' (marcar relevancia)
-    motor        TEXT,                   -- 'lucene' o 'manual'
-    terminos     TEXT,                   -- cómo quedó la consulta después de normalizarla
-    tiempo_ms    REAL,
-    n_resultados INTEGER,
-    creado       TEXT NOT NULL
+CREATE TABLE IF NOT EXISTS judgments (
+    id         INTEGER PRIMARY KEY,
+    grupo      TEXT NOT NULL,        -- id de la consulta de prueba, o 'libre:<consulta normalizada>' si no es de prueba
+    query_id   TEXT,                 -- 'q01'... o NULL
+    query      TEXT NOT NULL,
+    doc        TEXT NOT NULL,        -- hash del documento
+    engine     TEXT NOT NULL,        -- motor con el que se vio el resultado
+    policy     TEXT NOT NULL,
+    rank       INTEGER NOT NULL,
+    judgment   TEXT NOT NULL CHECK (judgment IN ('relevant', 'not_relevant', 'unsure')),
+    evaluator  TEXT NOT NULL,
+    judged_at  TEXT NOT NULL,
+    UNIQUE (grupo, doc, evaluator)   -- juzgar de nuevo lo mismo actualiza el registro en vez de duplicarlo
 );
-CREATE TABLE IF NOT EXISTS clics (
-    id           INTEGER PRIMARY KEY,
-    consulta_id  INTEGER NOT NULL REFERENCES consultas(id),
-    hash         TEXT NOT NULL,
-    puesto       INTEGER NOT NULL,
-    creado       TEXT NOT NULL
+CREATE INDEX IF NOT EXISTS idx_judgments_evaluator ON judgments(evaluator);
+CREATE TABLE IF NOT EXISTS searches (
+    id         INTEGER PRIMARY KEY,
+    session    TEXT,
+    query      TEXT NOT NULL,
+    engine     TEXT NOT NULL,
+    policy     TEXT NOT NULL,
+    site       TEXT,
+    date_from  TEXT,
+    date_to    TEXT,
+    sort       TEXT,
+    page       INTEGER NOT NULL,
+    total      INTEGER NOT NULL,
+    took_ms    REAL NOT NULL,
+    created_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS juicios (
-    id           INTEGER PRIMARY KEY,
-    consulta_id  INTEGER NOT NULL REFERENCES consultas(id),
-    sesion       TEXT NOT NULL,
-    hash         TEXT NOT NULL,
-    puesto       INTEGER NOT NULL,
-    relevante    INTEGER NOT NULL,       -- 1 = relevante, 0 = no, -1 = no pudo decidirlo
-    creado       TEXT NOT NULL,
-    UNIQUE (consulta_id, hash)
-);
-CREATE TABLE IF NOT EXISTS mostrados (
-    consulta_id  INTEGER NOT NULL REFERENCES consultas(id),
-    puesto       INTEGER NOT NULL,
-    hash         TEXT NOT NULL,
-    PRIMARY KEY (consulta_id, hash)
-);
-CREATE TABLE IF NOT EXISTS satisfaccion (
-    consulta_id  INTEGER PRIMARY KEY REFERENCES consultas(id),
-    valor        INTEGER NOT NULL,       -- 2 = sí cubrió lo que buscaba, 1 = en parte, 0 = no
-    creado       TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_consultas_sesion ON consultas(sesion);
-CREATE INDEX IF NOT EXISTS idx_juicios_consulta ON juicios(consulta_id);
+CREATE INDEX IF NOT EXISTS idx_searches_session ON searches(session);
 """
 
 
 def ahora() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def normalizar(texto: str) -> str:
+    return re.sub(r"\s+", " ", texto.lower()).strip()
 
 
 @contextmanager
@@ -61,7 +56,6 @@ def conexion():
     con = sqlite3.connect(config.USO_DB, timeout=15)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
-    con.execute("PRAGMA foreign_keys=ON")
     try:
         yield con
         con.commit()
@@ -72,61 +66,56 @@ def conexion():
 def iniciar():
     with conexion() as con:
         con.executescript(ESQUEMA)
+        columnas = {f["name"] for f in con.execute("PRAGMA table_info(searches)")}
+        for nombre in ("date_from", "date_to", "sort"):      # bases creadas antes de la búsqueda por fecha
+            if nombre not in columnas:
+                con.execute(f"ALTER TABLE searches ADD COLUMN {nombre} TEXT")
 
 
-def registrar_consulta(sesion: str, texto: str, modo: str, motor: str, terminos, tiempo_ms: float, n: int) -> int:
+# --- juicios --------------------------------------------------------------------------------------------------
+def _juicio_json(f) -> dict:
+    return {"id": f["id"], "queryId": f["query_id"], "query": f["query"], "doc": f["doc"], "engine": f["engine"],
+            "policy": f["policy"], "rank": f["rank"], "judgment": f["judgment"], "evaluator": f["evaluator"],
+            "judgedAt": f["judged_at"]}
+
+
+def guardar_juicio(j: dict) -> dict:
+    grupo = j["queryId"] or "libre:" + normalizar(j["query"])
     with conexion() as con:
-        cur = con.execute(
-            "INSERT INTO consultas (sesion, texto, modo, motor, terminos, tiempo_ms, n_resultados, creado) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (sesion, texto, modo, motor, " ".join(terminos), tiempo_ms, n, ahora()))
-        return cur.lastrowid
+        con.execute(
+            "INSERT INTO judgments (grupo, query_id, query, doc, engine, policy, rank, judgment, evaluator, judged_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(grupo, doc, evaluator) DO UPDATE SET "
+            "engine=excluded.engine, policy=excluded.policy, rank=excluded.rank, judgment=excluded.judgment, "
+            "judged_at=excluded.judged_at",
+            (grupo, j["queryId"], j["query"], j["doc"], j["engine"], j["policy"], j["rank"], j["judgment"],
+             j["evaluator"], ahora()))
+        fila = con.execute("SELECT * FROM judgments WHERE grupo=? AND doc=? AND evaluator=?",
+                           (grupo, j["doc"], j["evaluator"])).fetchone()
+        return _juicio_json(fila)
 
 
-def registrar_clic(consulta_id: int, hash_doc: str, puesto: int):
+def listar_juicios(query_id=None, evaluador=None) -> list:
+    sql, args = "SELECT * FROM judgments WHERE 1=1", []
+    if query_id:
+        sql += " AND query_id=?"
+        args.append(query_id)
+    if evaluador:
+        sql += " AND evaluator=?"
+        args.append(evaluador)
     with conexion() as con:
-        con.execute("INSERT INTO clics (consulta_id, hash, puesto, creado) VALUES (?,?,?,?)",
-                    (consulta_id, hash_doc, puesto, ahora()))
+        return [_juicio_json(f) for f in con.execute(sql + " ORDER BY judged_at, id", args)]
 
 
-def registrar_mostrados(consulta_id: int, resultados):
-    """Guarda qué documentos se le mostraron a la persona en una consulta de evaluación: [(puesto, hash)]."""
+def borrar_juicios(evaluador: str) -> int:
     with conexion() as con:
-        con.executemany("INSERT OR IGNORE INTO mostrados (consulta_id, puesto, hash) VALUES (?,?,?)",
-                        [(consulta_id, puesto, h) for puesto, h in resultados])
+        return con.execute("DELETE FROM judgments WHERE evaluator=?", (evaluador,)).rowcount
 
 
-def consulta_de(sesion: str, consulta_id: int):
-    """La consulta de evaluación si existe y es de esta sesión; si no, None."""
+# --- búsquedas ------------------------------------------------------------------------------------------------
+def registrar_busqueda(sesion, consulta, motor, politica, sitio, pagina, total, tiempo_ms, desde="", hasta="",
+                       orden="relevance"):
     with conexion() as con:
-        return con.execute("SELECT * FROM consultas WHERE id=? AND sesion=? AND modo='evaluate'",
-                           (consulta_id, sesion)).fetchone()
-
-
-def guardar_juicios(consulta_id: int, sesion: str, marcas: dict) -> int:
-    """marcas: {hash: 1 | 0 | -1}. Solo se aceptan documentos que se le mostraron. Devuelve cuántos se guardaron."""
-    with conexion() as con:
-        mostrados = {fila["hash"]: fila["puesto"] for fila in
-                     con.execute("SELECT hash, puesto FROM mostrados WHERE consulta_id=?", (consulta_id,))}
-        guardados = 0
-        for h, valor in marcas.items():
-            if h in mostrados and valor in (1, 0, -1):
-                con.execute("INSERT INTO juicios (consulta_id, sesion, hash, puesto, relevante, creado) VALUES (?,?,?,?,?,?) "
-                            "ON CONFLICT(consulta_id, hash) DO UPDATE SET relevante=excluded.relevante, creado=excluded.creado",
-                            (consulta_id, sesion, h, mostrados[h], valor, ahora()))
-                guardados += 1
-        return guardados
-
-
-def guardar_satisfaccion(consulta_id: int, valor: int):
-    if valor in (0, 1, 2):
-        with conexion() as con:
-            con.execute("INSERT INTO satisfaccion (consulta_id, valor, creado) VALUES (?,?,?) "
-                        "ON CONFLICT(consulta_id) DO UPDATE SET valor=excluded.valor, creado=excluded.creado",
-                        (consulta_id, valor, ahora()))
-
-
-def contar_evaluadas(sesion: str) -> int:
-    """Consultas distintas que esta sesión ya evaluó (con al menos una marca)."""
-    with conexion() as con:
-        return con.execute("SELECT COUNT(DISTINCT consulta_id) FROM juicios WHERE sesion=?", (sesion,)).fetchone()[0]
+        con.execute("INSERT INTO searches (session, query, engine, policy, site, date_from, date_to, sort, page, total, "
+                    "took_ms, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (sesion, consulta, motor, politica, sitio or None, desde or None, hasta or None, orden, pagina,
+                     total, tiempo_ms, ahora()))

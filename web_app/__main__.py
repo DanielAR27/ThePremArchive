@@ -1,7 +1,9 @@
 """Levanta The Prem Archive:  python -m web_app   (desde la raíz del repo)
 
 Arranca el servicio de búsqueda de Lucene (si no está ya corriendo y existe el .jar) y la aplicación web en
-http://127.0.0.1:5000. Con --sin-lucene usa solo el índice propio en Python.
+http://127.0.0.1:8000. En el modo normal, el público, se busca solo con Lucene y la política C. Con --dev se ofrecen los dos
+indexadores y las seis políticas (para compararlos); tarda más en arrancar y gasta más memoria. Con --sin-lucene se usa
+solo el índice propio en Python.
 """
 import argparse
 import atexit
@@ -15,22 +17,26 @@ from .buscador import Buscador
 
 
 def levantar_lucene(buscador: Buscador):
-    if buscador.lucene_disponible():
+    if buscador.politicas_lucene():
         print("Servicio de Lucene ya estaba corriendo.")
         return None
     if not config.JAR.exists():
         print(f"No encontré {config.JAR}: se usará el índice propio. Compilar con: cd indexacion/indexador_lucene && mvn -q package")
         return None
     print("Iniciando el servicio de búsqueda de Lucene...")
+    politicas = config.POLITICAS if config.MODO_DEV else config.POLITICA_POR_OMISION
+    configuraciones = [arg for p in politicas if (config.CONFIG_DIR / f"politica_{p}.conf").exists()
+                       for arg in ("--config", str(config.CONFIG_DIR / f"politica_{p}.conf"))]
+    fechas = ["--fechas", str(config.FECHAS_BIN)] if config.FECHAS_BIN.exists() else []
     proceso = subprocess.Popen(
-        ["java", "-jar", str(config.JAR), "servir", "--config", str(config.POLITICA), "--puerto", str(config.PUERTO_LUCENE)],
+        ["java", "-jar", str(config.JAR), "servir", *configuraciones, *fechas, "--puerto", str(config.PUERTO_LUCENE)],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     atexit.register(proceso.terminate)
-    for _ in range(60):
+    for _ in range(90):
         if proceso.poll() is not None:
             print("El servicio de Lucene se cerró al iniciar; se usará el índice propio.")
             return None
-        if buscador.lucene_disponible():
+        if buscador.politicas_lucene():
             print("Lucene listo.")
             return proceso
         time.sleep(1)
@@ -40,13 +46,19 @@ def levantar_lucene(buscador: Buscador):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--dev", action="store_true", help="ofrecer los dos indexadores y las seis políticas")
     ap.add_argument("--sin-lucene", action="store_true", help="no iniciar Lucene; buscar con el índice propio")
     ap.add_argument("--puerto", type=int, default=config.PUERTO_WEB)
     args = ap.parse_args()
+    config.MODO_DEV = args.dev
+    if not config.FECHAS_BIN.exists():
+        print("Preparando las fechas de publicación (se hace una sola vez)...")
+        from .preparar_fechas import preparar
+        print(f"Listo: {preparar()['con_fecha']:,} documentos con fecha.")
     if not args.sin_lucene:
         levantar_lucene(Buscador())
     app = crear_app()
-    print(f"The Prem Archive en http://127.0.0.1:{args.puerto}")
+    print(f"The Prem Archive en http://127.0.0.1:{args.puerto}" + ("  (modo dev: todos los motores y políticas)" if args.dev else ""))
     app.run(host="127.0.0.1", port=args.puerto, threaded=True)
 
 

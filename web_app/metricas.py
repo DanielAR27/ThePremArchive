@@ -1,160 +1,175 @@
-"""Métricas a partir de lo que hicieron las personas (uso.db): calidad de la búsqueda (precisión, MRR, nDCG, necesidad
-de información cubierta), uso (consultas, clics) y rendimiento (tiempo de respuesta). Todas se calculan al pedirlas,
-así que la página siempre muestra los datos al día."""
+"""Métricas de evaluación y estadísticas de uso.
+
+Las métricas siguen las definiciones de Manning, Raghavan y Schütze (2008, cap. 8) y son las mismas de
+interfaz/src/lib/metricas.js: se calculan sobre los 10 primeros resultados, los documentos sin juicio cuentan como no
+relevantes y "unsure" cuenta como juzgado pero no relevante. Para cada motor y política se usan los 10 primeros
+resultados de las 12 consultas de prueba (los del Proyecto 2) y los juicios de relevancia, que valen para cualquier
+motor porque se juzga el documento y no el motor (método del pool).
+"""
 import csv
-import io
+import functools
+import json
 import math
 import statistics
 from collections import Counter, defaultdict
 
 from . import config, db
 
-
-# --- medidas de una consulta evaluada ------------------------------------------------------------------------
-def _medidas(marcas):
-    """marcas: [(puesto, relevante)] solo con 1 o 0, de los resultados que la persona pudo juzgar."""
-    marcas = sorted(marcas)
-    if not marcas:
-        return None
-    relevantes = [rel for _, rel in marcas]
-    precision = sum(relevantes) / len(relevantes)
-    primero = next((puesto for puesto, rel in marcas if rel == 1), None)
-    mrr = 1.0 / primero if primero else 0.0
-    dcg = sum(rel / math.log2(puesto + 1) for puesto, rel in marcas)
-    ideal = sum(1 / math.log2(i + 2) for i in range(sum(relevantes)))
-    ndcg = dcg / ideal if ideal else 0.0
-    return {"p10": precision, "mrr": mrr, "ndcg": ndcg, "juzgados": len(marcas), "relevantes": sum(relevantes)}
+CORTE = 10
+BASE_P2 = "Project 2 pool"
 
 
+# --- datos de referencia ---------------------------------------------------------------------------------------
+@functools.lru_cache(maxsize=1)
+def consultas_de_prueba() -> list:
+    """[{'id': 'q01', 'text': 'haaland goals'}] de indexacion/config/datos/consultas.txt."""
+    salida = []
+    for linea in (config.CONFIG_DIR / "datos" / "consultas.txt").read_text(encoding="utf-8").splitlines():
+        if linea.strip() and not linea.startswith("#"):
+            campos = [c.strip() for c in linea.split("|")]
+            salida.append({"id": campos[0], "text": campos[1]})
+    return salida
+
+
+@functools.lru_cache(maxsize=1)
+def rankings_p2() -> dict:
+    """{'lucene:C': {'q01': [hash, ...]}}: los 10 primeros de cada motor y política en el Proyecto 2."""
+    datos = json.loads(config.RANKINGS_P2.read_text(encoding="utf-8"))
+    return {f"{motor}:{politica}": consultas
+            for motor, politicas in datos.items() for politica, consultas in politicas.items()}
+
+
+@functools.lru_cache(maxsize=1)
+def juicios_p2() -> list:
+    """Los juicios de relevancia del pool del Proyecto 2, en el formato de la API."""
+    salida = []
+    with open(config.JUICIOS_P2, encoding="utf-8-sig", newline="") as f:
+        for fila in csv.DictReader(f):
+            if fila["relevante"].strip() in ("0", "1"):
+                salida.append({"queryId": fila["consulta"], "doc": fila["doc"], "evaluator": BASE_P2,
+                               "judgment": "relevant" if fila["relevante"].strip() == "1" else "not_relevant"})
+    return salida
+
+
+# --- una lista de resultados -----------------------------------------------------------------------------------
 def _media(valores):
     valores = list(valores)
-    return sum(valores) / len(valores) if valores else None
+    return sum(valores) / len(valores) if valores else 0.0
 
 
-def _percentil(valores, q):
+def puntuar(rel, relevantes_conocidos):
+    """rel: 1 / 0 / None por posición. Devuelve P@5, P@10, RR, AP, nDCG@10 y cuántos tenían juicio."""
+    top = rel[:CORTE]
+    acierto = [1 if r == 1 else 0 for r in top]
+    p_en = lambda k: sum(acierto[:k]) / k
+
+    primero = acierto.index(1) if 1 in acierto else -1
+    rr = 0.0 if primero == -1 else 1 / (primero + 1)
+
+    encontrados, suma = 0, 0.0
+    for i, h in enumerate(acierto):
+        if h:
+            encontrados += 1
+            suma += encontrados / (i + 1)
+    ap = suma / min(relevantes_conocidos, CORTE) if relevantes_conocidos else 0.0
+
+    dcg = sum(h / math.log2(i + 2) for i, h in enumerate(acierto))
+    ideal = sum(1 / math.log2(i + 2) for i in range(min(relevantes_conocidos, CORTE)))
+    ndcg = dcg / ideal if ideal else 0.0
+    return {"p5": p_en(5), "p10": p_en(10), "rr": rr, "ap": ap, "ndcg10": ndcg,
+            "judged": sum(1 for r in top if r is not None)}
+
+
+def calcular_metricas(motor: str, politica: str, incluir_p2: bool = True) -> dict:
+    """Lo que devuelve GET /api/metrics."""
+    vivos = [j for j in db.listar_juicios() if j["queryId"]]
+    juicios = (juicios_p2() if incluir_p2 else []) + vivos
+    relevancia = {}                                  # (consulta, documento) -> el último juicio
+    for j in juicios:
+        relevancia[(j["queryId"], j["doc"])] = j["judgment"]
+    conocidos = Counter(q for (q, _), v in relevancia.items() if v == "relevant")
+
+    consultas, rankings = consultas_de_prueba(), rankings_p2()
+
+    def puntuar_config(clave):
+        filas = []
+        for q in consultas:
+            docs = rankings.get(clave, {}).get(q["id"], [])
+            rel = []
+            for d in docs[:CORTE]:
+                v = relevancia.get((q["id"], d))
+                rel.append(None if v is None else (1 if v == "relevant" else 0))
+            filas.append({"id": q["id"], "text": q["text"], "relevantAtRank": rel,
+                          **puntuar(rel, conocidos.get(q["id"], 0))})
+        return filas
+
+    def resumir(filas):
+        return {"p5": _media(f["p5"] for f in filas), "p10": _media(f["p10"] for f in filas),
+                "mrr": _media(f["rr"] for f in filas), "map": _media(f["ap"] for f in filas),
+                "ndcg10": _media(f["ndcg10"] for f in filas)}
+
+    por_consulta = puntuar_config(f"{motor}:{politica}")
+    por_config = []
+    for clave in sorted(rankings):
+        m, p = clave.split(":")
+        por_config.append({"engine": m, "policy": p, **resumir(puntuar_config(clave))})
+
+    por_dia = Counter(j["judgedAt"][:10] for j in vivos if j.get("judgedAt"))
+    return {
+        "engine": motor, "policy": politica,
+        "summary": {"queries": len(consultas), "judged": len(relevancia),
+                    "evaluators": len({j["evaluator"] for j in juicios}), **resumir(por_consulta)},
+        "perQuery": por_consulta,
+        "byConfig": por_config,
+        "activity": [{"date": d, "judgments": n} for d, n in sorted(por_dia.items())],
+        "baseline": ({"label": BASE_P2, "judgments": len(juicios_p2()),
+                      "relevant": sum(1 for j in juicios_p2() if j["judgment"] == "relevant"),
+                      "date": config.FECHA_P2} if incluir_p2 else None),
+    }
+
+
+# --- uso -------------------------------------------------------------------------------------------------------
+def percentil(valores, q):
     if not valores:
         return None
     valores = sorted(valores)
     return valores[min(len(valores) - 1, int(round(q * (len(valores) - 1))))]
 
 
-def _kappa(pares):
-    """Acuerdo entre dos personas que juzgaron lo mismo: porcentaje de acuerdo y kappa de Cohen."""
-    n = len(pares)
-    if n == 0:
-        return None, None
-    acuerdo = sum(1 for a, b in pares if a == b) / n
-    pa = sum(a for a, _ in pares) / n
-    pb = sum(b for _, b in pares) / n
-    esperado = pa * pb + (1 - pa) * (1 - pb)
-    kappa = (acuerdo - esperado) / (1 - esperado) if esperado < 1 else None
-    return acuerdo, kappa
-
-
-def calcular() -> dict:
+def estadisticas_de_uso() -> dict:
+    """Búsquedas, personas y tiempos, para la sección de estadísticas de uso del documento."""
     with db.conexion() as con:
-        consultas = [dict(f) for f in con.execute("SELECT * FROM consultas")]
-        juicios = [dict(f) for f in con.execute("SELECT * FROM juicios")]
-        clics = [dict(f) for f in con.execute("SELECT * FROM clics")]
-        satisfaccion = {f["consulta_id"]: f["valor"] for f in con.execute("SELECT * FROM satisfaccion")}
-
-    por_id = {c["id"]: c for c in consultas}
-    busquedas = [c for c in consultas if c["modo"] == "search"]
-    evaluaciones = [c for c in consultas if c["modo"] == "evaluate"]
-
-    # --- calidad -------------------------------------------------------------------------------------------
-    marcas_por_consulta = defaultdict(list)
-    for j in juicios:
-        if j["relevante"] in (0, 1):
-            marcas_por_consulta[j["consulta_id"]].append((j["puesto"], j["relevante"]))
-    medidas = {cid: m for cid, marcas in marcas_por_consulta.items() if (m := _medidas(marcas))}
-
-    precision_por_puesto = []
-    for puesto in range(1, config.K_EVALUACION + 1):
-        valores = [rel for marcas in marcas_por_consulta.values() for p, rel in marcas if p == puesto]
-        precision_por_puesto.append({"puesto": puesto, "valor": _media(valores), "n": len(valores)})
-
-    sat = Counter(satisfaccion.values())
-    sat_total = sum(sat.values())
-
-    # por texto de consulta (varias personas pueden calificar la misma)
-    por_texto = defaultdict(list)
-    for cid, m in medidas.items():
-        por_texto[por_id[cid]["texto"].lower()].append((cid, m))
-    tabla_consultas = []
-    for texto, lista in por_texto.items():
-        tabla_consultas.append({
-            "consulta": texto, "evaluaciones": len(lista),
-            "p10": _media(m["p10"] for _, m in lista), "mrr": _media(m["mrr"] for _, m in lista),
-            "ndcg": _media(m["ndcg"] for _, m in lista),
-            "satisfechas": _media(1.0 if satisfaccion.get(cid) == 2 else 0.0 for cid, _ in lista if cid in satisfaccion),
-        })
-    tabla_consultas.sort(key=lambda f: (-f["evaluaciones"], f["consulta"]))
-
-    # --- acuerdo entre quienes juzgaron lo mismo -------------------------------------------------------------
-    grupos = defaultdict(dict)   # (consulta en minúsculas, documento) -> {sesión: marca}
-    for j in juicios:
-        if j["relevante"] in (0, 1):
-            grupos[(por_id[j["consulta_id"]]["texto"].lower(), j["hash"])].setdefault(j["sesion"], j["relevante"])
-    pares = [tuple(list(v.values())[:2]) for v in grupos.values() if len(v) >= 2]
-    acuerdo, kappa = _kappa(pares)
-
-    # --- uso ---------------------------------------------------------------------------------------------------
-    clics_busqueda = [c for c in clics if por_id.get(c["consulta_id"], {}).get("modo") == "search"]
-    con_clic = {c["consulta_id"] for c in clics_busqueda}
-    por_dia = defaultdict(lambda: {"search": 0, "evaluate": 0})
-    for c in consultas:
-        por_dia[c["creado"][:10]][c["modo"]] += 1
-    clics_por_puesto = Counter(c["puesto"] for c in clics_busqueda if 1 <= c["puesto"] <= config.K_BUSQUEDA)
-    mas_buscadas = Counter(c["texto"].lower() for c in consultas).most_common(10)
-    sin_resultados = sum(1 for c in consultas if c["n_resultados"] == 0)
-
-    # --- rendimiento ---------------------------------------------------------------------------------------------
-    tiempos = [c["tiempo_ms"] for c in consultas if c["tiempo_ms"] is not None]
-    por_motor = {m: [c["tiempo_ms"] for c in consultas if c["motor"] == m and c["tiempo_ms"] is not None]
-                 for m in sorted({c["motor"] for c in consultas if c["motor"]})}
-
+        busquedas = [dict(f) for f in con.execute("SELECT * FROM searches")]
+        juicios = [dict(f) for f in con.execute("SELECT evaluator, judged_at FROM judgments")]
+    tiempos = [b["took_ms"] for b in busquedas]
+    por_dia = defaultdict(int)
+    for b in busquedas:
+        por_dia[b["created_at"][:10]] += 1
+    por_config = defaultdict(list)
+    for b in busquedas:
+        por_config[f"{b['engine']}:{b['policy']}"].append(b["took_ms"])
     return {
-        "resumen": {
-            "sesiones": len({c["sesion"] for c in consultas}),
-            "busquedas": len(busquedas), "evaluaciones": len(evaluaciones),
-            "consultas_evaluadas": len(medidas), "juicios": len(juicios),
-            "juicios_relevantes": sum(1 for j in juicios if j["relevante"] == 1),
-            "juicios_no_relevantes": sum(1 for j in juicios if j["relevante"] == 0),
-            "juicios_indecisos": sum(1 for j in juicios if j["relevante"] == -1),
-            "clics": len(clics_busqueda),
-        },
-        "calidad": {
-            "p10": _media(m["p10"] for m in medidas.values()),
-            "mrr": _media(m["mrr"] for m in medidas.values()),
-            "ndcg": _media(m["ndcg"] for m in medidas.values()),
-            "sin_relevantes": sum(1 for m in medidas.values() if m["relevantes"] == 0),
-            "precision_por_puesto": precision_por_puesto,
-            "satisfaccion": {"si": sat.get(2, 0), "parcial": sat.get(1, 0), "no": sat.get(0, 0), "total": sat_total},
-            "necesidad_cubierta": (sat.get(2, 0) + 0.5 * sat.get(1, 0)) / sat_total if sat_total else None,
-            "consultas": tabla_consultas,
-            "acuerdo": {"pares": len(pares), "porcentaje": acuerdo, "kappa": kappa},
-        },
-        "uso": {
-            "ctr": len(con_clic & {c["id"] for c in busquedas}) / len(busquedas) if busquedas else None,
-            "puesto_medio_clic": _media(c["puesto"] for c in clics_busqueda if c["puesto"] > 0),
-            "clics_por_puesto": [{"puesto": p, "clics": clics_por_puesto.get(p, 0)} for p in range(1, 11)],
-            "por_dia": [{"dia": d, **v} for d, v in sorted(por_dia.items())],
-            "mas_buscadas": [{"consulta": t, "veces": n} for t, n in mas_buscadas],
-            "sin_resultados": sin_resultados,
-        },
-        "rendimiento": {
-            "mediana": statistics.median(tiempos) if tiempos else None,
-            "p95": _percentil(tiempos, 0.95), "maximo": max(tiempos) if tiempos else None,
-            "por_motor": {m: {"n": len(v), "mediana": statistics.median(v)} for m, v in por_motor.items() if v},
-        },
+        "searches": len(busquedas),
+        "people": len({b["session"] for b in busquedas if b["session"]}),
+        "evaluators": len({j["evaluator"] for j in juicios}),
+        "judgments": len(juicios),
+        "withoutResults": sum(1 for b in busquedas if b["total"] == 0),
+        "withSiteFilter": sum(1 for b in busquedas if b["site"]),
+        "withDateFilter": sum(1 for b in busquedas if b.get("date_from") or b.get("date_to")),
+        "bySort": dict(Counter(b.get("sort") or "relevance" for b in busquedas)),
+        "tookMs": {"median": statistics.median(tiempos) if tiempos else None, "p95": percentil(tiempos, 0.95),
+                   "max": max(tiempos) if tiempos else None},
+        "byConfig": [{"config": c, "searches": len(v), "medianMs": statistics.median(v)} for c, v in sorted(por_config.items())],
+        "perDay": [{"date": d, "searches": n} for d, n in sorted(por_dia.items())],
+        "topQueries": [{"query": q, "times": n} for q, n in
+                       Counter(db.normalizar(b["query"]) for b in busquedas).most_common(10)],
     }
 
 
 def exportar_csv(que: str) -> str:
-    """Los datos en bruto, para analizarlos aparte (por ejemplo para las conclusiones del documento)."""
-    tablas = {"juicios": "SELECT * FROM juicios ORDER BY id", "consultas": "SELECT * FROM consultas ORDER BY id",
-              "clics": "SELECT * FROM clics ORDER BY id"}
+    """Los datos en bruto, para analizarlos aparte (por ejemplo, para las conclusiones del documento)."""
+    import io
+    tablas = {"judgments": "SELECT * FROM judgments ORDER BY id", "searches": "SELECT * FROM searches ORDER BY id"}
     if que not in tablas:
         raise KeyError(que)
     with db.conexion() as con:
