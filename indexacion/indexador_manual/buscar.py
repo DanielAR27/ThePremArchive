@@ -92,6 +92,49 @@ class Indice:
         mejores = mejores[np.argsort(-puntaje[mejores])]
         return [(int(d), float(puntaje[d])) for d in mejores if puntaje[d] > 0]
 
+    def puntajes(self, terminos):
+        """Similitud coseno de cada documento con la consulta (un arreglo con un valor por documento), o None si
+        ninguna palabra de la consulta está en el índice. Lo usa la aplicación web para filtrar y ordenar."""
+        consulta = Counter(t for t in terminos if t in self.diccionario)
+        if not consulta:
+            return None
+        puntaje = np.zeros(self.n_docs, dtype=np.float64)
+        norma_q2 = 0.0
+        for termino, tfq in consulta.items():
+            df = self.diccionario[termino][0]
+            idf = math.log10(self.n_docs / df)
+            wq = (1.0 + math.log10(tfq)) * idf
+            norma_q2 += wq * wq
+            docs, tfs = self.postings(termino)
+            puntaje[docs] += wq * (1.0 + np.log10(tfs)) * idf
+        if norma_q2 == 0.0:
+            return None
+        puntaje /= self.docs["norma"].astype(np.float64) * math.sqrt(norma_q2)
+        return puntaje
+
+    def prefijos_hash(self):
+        """Los primeros 8 bytes del hash de cada documento, como int64 con signo (para buscarlos en una tabla)."""
+        crudo = np.frombuffer(self.docs.tobytes(), dtype=np.uint8).reshape(self.n_docs, fmt.DOC_SIZE)
+        return np.ascontiguousarray(crudo[:, :8]).view(">i8").ravel().astype(np.int64)
+
+    def buscar_con_total(self, terminos, k: int = 10, host=None):
+        """Como buscar(), pero con un filtro opcional por sitio (nombre del host) y con la cantidad total de
+        documentos que tienen puntaje mayor que cero. Lo usa la aplicación web. Devuelve (resultados, total)."""
+        puntaje = self.puntajes(terminos)
+        if puntaje is None:
+            return [], 0
+        if host is not None:
+            if host not in self.hosts:
+                return [], 0
+            puntaje[self.docs["host"] != self.hosts.index(host)] = 0.0
+        total = int(np.count_nonzero(puntaje > 0))
+        k = min(k, self.n_docs, total)
+        if k == 0:
+            return [], 0
+        mejores = np.argpartition(-puntaje, k - 1)[:k]
+        mejores = mejores[np.argsort(-puntaje[mejores])]
+        return [(int(d), float(puntaje[d])) for d in mejores if puntaje[d] > 0], total
+
     def cerrar(self):
         self.docs = None
         self.mm.close()
