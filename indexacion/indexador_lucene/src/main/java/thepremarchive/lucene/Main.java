@@ -18,9 +18,9 @@ import java.util.List;
  *
  *   java -jar indexacion/indexador_lucene/target/indexador-lucene.jar consultas --config indexacion/config/politica_A.conf [-k 10] indexacion/config/datos/consultas.txt
  *
- *   java -jar indexacion/indexador_lucene/target/indexador-lucene.jar servir --config indexacion/config/politica_C.conf [--puerto 8081]
+ *   java -jar indexacion/indexador_lucene/target/indexador-lucene.jar servir --config indexacion/config/politica_A.conf [--config indexacion/config/politica_C.conf ...] [--fechas web_app/datos/fechas.bin] [--puerto 8081]
  *
- * "servir" abre el índice y responde búsquedas por HTTP para la aplicación web (ver Servidor.java).
+ * "servir" abre uno o varios índices y responde búsquedas por HTTP para la aplicación web (ver Servidor.java).
  * "consultas" corre todas las consultas de un archivo y la usa indexacion/herramientas/evaluar.py (comparar).
  * "terminos" imprime, por archivo, una línea "ruta<TAB>término término ...": la usa
  * indexacion/herramientas/comparar_normalizacion.py para verificar que Lucene normaliza igual que el indexador propio.
@@ -35,16 +35,19 @@ public final class Main {
             uso();
         }
         String config = null;
+        String fechas = null;                       // "servir": archivo de fechas de publicación
+        List<String> configs = new ArrayList<>();   // "servir" acepta varias políticas
         int limite = 0, hilos = 0, k = 10, repeticiones = 7, puerto = 8081;
         List<String> resto = new ArrayList<>();
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
-                case "--config": config = args[++i]; break;
+                case "--config": config = args[++i]; configs.add(config); break;
                 case "--limit": limite = Integer.parseInt(args[++i]); break;
                 case "-t": case "--hilos": hilos = Integer.parseInt(args[++i]); break;
                 case "-k": k = Integer.parseInt(args[++i]); break;
                 case "--repeticiones": repeticiones = Integer.parseInt(args[++i]); break;
                 case "--puerto": puerto = Integer.parseInt(args[++i]); break;
+                case "--fechas": fechas = args[++i]; break;
                 default: resto.add(args[i]);
             }
         }
@@ -62,7 +65,10 @@ public final class Main {
                 Buscar.lote(requerir(config), resto.get(0), k);
                 break;
             case "servir":
-                Servidor.servir(requerir(config), puerto);
+                if (configs.isEmpty()) {
+                    uso();
+                }
+                Servidor.servir(configs, puerto, fechas);
                 break;
             case "tiempos":
                 if (resto.size() != 1) {
